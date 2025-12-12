@@ -1,0 +1,245 @@
+\documentclass[12pt,a4paper]{jarticle}
+\usepackage[dvipdfmx]{graphicx}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{geometry}
+\geometry{left=25mm,right=25mm,top=30mm,bottom=30mm}
+\usepackage{siunitx}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{textcomp}
+
+% 円記号の定義
+\newcommand{\yen}{\textyen}
+
+% タイトル情報
+\title{太陽光発電・蓄電池システム導入による\\ローリング最適化の実行結果報告書}
+\author{}
+\date{\today}
+
+% データから読み込んだ数値を定義
+% 北海道電力基本プラン
+\newcommand{\HokkaidoBasicCharge}{4{,}553{,}874}
+\newcommand{\HokkaidoEnergyCharge}{7{,}436{,}705}
+\newcommand{\HokkaidoFuelAdjustment}{-2{,}548{,}207}
+\newcommand{\HokkaidoRenewableLevy}{1{,}376{,}015}
+\newcommand{\HokkaidoTotal}{10{,}818{,}388}
+
+% 市場価格連動プラン
+\newcommand{\MarketBasicCharge}{4{,}553{,}874}
+\newcommand{\MarketEnergyCharge}{4{,}769{,}793}
+\newcommand{\MarketRenewableLevy}{1{,}376{,}015}
+\newcommand{\MarketTotal}{10{,}699{,}682}
+
+% その他の重要数値
+\newcommand{\ContractPower}{157.8}
+\newcommand{\AnnualBuy}{345{,}732}
+\newcommand{\CostDifference}{118{,}705}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+本報告書は、北海道十勝地方における太陽光発電(PV)250kWおよび蓄電池システム860kWhを導入した場合のローリング最適化実行結果をまとめたものである。
+2024年の1年間(30分間隔、17,520ステップ)について、JEPX市場価格データを用いた市場価格連動プランと北海道電力基本プランの比較を行った。
+その結果、市場価格連動プランが年間\textbf{\yen\CostDifference}の削減効果を示した。
+\end{abstract}
+
+\section{システム概要}
+
+\subsection{導入システム仕様}
+本研究で検討するエネルギーマネジメントシステムの仕様を表\ref{tab:system_spec}に示す。
+
+\begin{table}[H]
+\centering
+\caption{導入システム仕様}
+\label{tab:system_spec}
+\begin{tabular}{ll}
+\toprule
+項目 & 仕様 \\
+\midrule
+設置場所 & 北海道十勝地方 \\
+太陽光発電容量 & 250 kW \\
+PV設置角度 & 南向き40度 \\
+蓄電池容量 & 860 kWh (430 kWh × 2) \\
+充放電最大出力 & 400 kW \\
+売電制約 & 逆潮流不可 \\
+最適化期間 & 2024年1月1日〜12月31日 \\
+時間分解能 & 30分間隔 \\
+最適化ステップ数 & 17,520 ステップ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{電力料金プラン}
+比較対象とした2つの電力料金プランの概要を表\ref{tab:pricing_plans}に示す。
+
+\begin{table}[H]
+\centering
+\caption{電力料金プラン比較}
+\label{tab:pricing_plans}
+\begin{tabular}{p{4cm}p{5cm}p{5cm}}
+\toprule
+項目 & 北海道電力基本プラン & 市場価格連動プラン \\
+\midrule
+基本料金 & 2,829.60円/kW × 0.85 & 同左 \\
+電力量料金 & 21.51円/kWh & JEPX価格 \\
+燃料費調整額 & 月別変動(-5.69〜-9.60円/kWh) & なし \\
+再エネ賦課金 & 3.98円/kWh & 3.98円/kWh \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{最適化結果}
+
+\subsection{年間電気料金比較}
+表\ref{tab:annual_cost}に2024年の年間電気料金の詳細比較を示す。
+
+\begin{table}[H]
+\centering
+\caption{年間電気料金比較}
+\label{tab:annual_cost}
+\begin{tabular}{lrr}
+\toprule
+費用項目 & 北海道電力基本プラン & 市場価格連動プラン \\
+\midrule
+基本料金 & \yen\HokkaidoBasicCharge & \yen\MarketBasicCharge \\
+電力量料金 & \yen\HokkaidoEnergyCharge & \yen\MarketEnergyCharge \\
+燃料費調整額 & \yen\HokkaidoFuelAdjustment & --- \\
+再エネ賦課金 & \yen\HokkaidoRenewableLevy & \yen\MarketRenewableLevy \\
+\midrule
+\textbf{合計} & \textbf{\yen\HokkaidoTotal} & \textbf{\yen\MarketTotal} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\vspace{5mm}
+\noindent
+\textbf{削減額: \yen\CostDifference}（市場価格連動プランが安い）
+
+\vspace{3mm}
+\noindent
+契約電力: \ContractPower~kW
+
+\subsection{月別統計}
+図\ref{fig:monthly_stats}に月別の電力使用量、PV発電量、買電量の推移を示す。
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{../png/monthly_statistics.png}
+\caption{月別電力統計}
+\label{fig:monthly_stats}
+\end{figure}
+
+図\ref{fig:contract_power}に月別の契約電力(最大需要電力)の推移を示す。
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{../png/monthly_contract_power.png}
+\caption{月別契約電力}
+\label{fig:contract_power}
+\end{figure}
+
+\subsection{年間エネルギーフロー}
+
+図\ref{fig:timeseries}に年間を通じた電力消費、PV発電、正味需要の時系列変化を示す。
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{../png/rolling_results_timeseries.png}
+\caption{年間電力時系列データ}
+\label{fig:timeseries}
+\end{figure}
+
+図\ref{fig:buysell}に買電・売電の時系列変化を示す。
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{../png/rolling_results_buysell.png}
+\caption{買電・売電の推移}
+\label{fig:buysell}
+\end{figure}
+
+\subsection{蓄電池運用}
+
+図\ref{fig:battery}に蓄電池のSOC(State of Charge)と充放電電力の推移を示す。
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{../png/rolling_results_battery.png}
+\caption{蓄電池のSOCと充放電}
+\label{fig:battery}
+\end{figure}
+
+\subsection{PV利用状況}
+
+図\ref{fig:pvstack}にPV発電電力の利用状況(自家消費と余剰)を示す。
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{../png/rolling_results_pvstack.png}
+\caption{PV発電の利用内訳}
+\label{fig:pvstack}
+\end{figure}
+
+\section{結果の考察}
+
+\subsection{費用削減効果}
+2024年の最適化結果において、市場価格連動プランは北海道電力基本プランと比較して年間\yen\CostDifference の削減を達成した。
+これは主に以下の要因による:
+
+\begin{itemize}
+\item JEPX市場価格の平均が北海道電力の電力量料金より低かったこと
+\item 蓄電池を活用した価格裁定取引により、高価格時の買電を抑制できたこと
+\item PV自家消費により買電量が年間\AnnualBuy~kWhに抑制されたこと
+\end{itemize}
+
+\subsection{契約電力の最適化}
+最大需要電力は\ContractPower~kWとなり、PVと蓄電池システムの導入により需要のピークカットが実現された。
+基本料金は両プランで同一(\yen\HokkaidoBasicCharge)であるため、契約電力の削減は大きな費用削減効果をもたらす。
+
+\subsection{燃料費調整額の影響}
+2024年は燃料費調整額が大きくマイナス(割引)となっており、北海道電力基本プランにとって有利な状況であった。
+燃料費調整額による割引は年間\yen 2{,}548{,}207に達したが、それでも市場価格連動プランの方が経済的であった。
+
+\section{結論}
+
+本研究では、北海道十勝地方におけるPV250kW・蓄電池860kWhシステムの導入効果を、
+2024年の実データを用いたローリング最適化により評価した。主な結論を以下に示す:
+
+\begin{enumerate}
+\item 市場価格連動プランは北海道電力基本プランと比較して年間\yen\CostDifference の削減効果を示した
+\item 契約電力は\ContractPower~kWに抑制され、基本料金の削減に寄与した
+\item 蓄電池の活用により、電力価格の変動に対応した最適運用が実現された
+\item PV発電の自家消費により、買電量を\AnnualBuy~kWhに抑制できた
+\item 2024年は燃料費調整額が大幅な割引となったが、それでも市場価格連動プランが有利であった
+\end{enumerate}
+
+今後の課題として、異なる年度のデータでの検証、蓄電池容量の最適化、
+およびPV容量の経済性評価などが挙げられる。
+
+\section*{付録: 最適化手法}
+
+本研究では、以下の手法によりローリング最適化を実施した:
+
+\begin{itemize}
+\item \textbf{最適化ソルバー}: SCIP (Solving Constraint Integer Programs)
+\item \textbf{予測ホライズン}: 48ステップ(24時間)
+\item \textbf{制御ホライズン}: 1ステップ(30分)
+\item \textbf{最適化目的関数}: 基本料金 + 電力量料金の最小化
+\item \textbf{制約条件}:
+  \begin{itemize}
+  \item 電力収支バランス
+  \item 蓄電池容量制約(0〜860 kWh)
+  \item 充放電出力制約(±400 kW)
+  \item 非同時充放電制約
+  \item 逆潮流不可制約
+  \end{itemize}
+\item \textbf{計算時間}: 各ステップ最大10秒
+\item \textbf{全ステップ数}: 17,520ステップ
+\item \textbf{最適解達成率}: 100\% (Infeasible: 0ステップ)
+\end{itemize}
+
+\end{document}

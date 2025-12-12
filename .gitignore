@@ -1,0 +1,55 @@
+# Python
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.ipynb_checkpoints/
+*.ipynb
+
+# Virtual envs
+.venv/
+venv/
+ENV/
+
+# Logs and outputs
+logs/
+results/
+png/
+archive/
+
+# Data (uncomment if you don't want to upload large datasets)
+data/**/raw/
+data/**/tmp/
+data/**/*.csv
+data/**/*.tsv
+data/**/*.parquet
+data/**/*.feather
+data/**/*.json
+# Keep documentation files in data
+!data/**/*.md
+!data/**/README*
+
+# OS/editor
+.DS_Store
+.vscode/
+
+# LaTeX build artifacts
+*.aux
+*.log
+*.toc
+*.out
+*.bbl
+*.blg
+*.dvi
+*.fdb_latexmk
+*.fls
+*.synctex.gz
+
+# Misc large/binary artifacts
+*.pdf
+*.eps
+*.ai
+*.zip
+*.tar
+*.tar.gz

@@ -1,0 +1,688 @@
+\documentclass[a4paper,12pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[japanese]{babel}
+\usepackage[top=20mm, bottom=25mm, left=20mm, right=20mm]{geometry}
+\usepackage{url}
+\usepackage[dvipdfmx]{graphicx}
+\usepackage{amssymb}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{multirow}
+
+\title{太陽光発電・蓄電池システムにおける\\ローリング計画法による電気料金最小化}
+\author{神戸大学工学部情報知能工学科4年\\山崎博之}
+\date{2025年12月9日}
+
+\begin{document}
+
+\maketitle
+
+\section{背景と目的}
+
+北海道十勝地方に設置されたPV（太陽光発電）・蓄電池システム（PV容量250kW，蓄電池容量860kWh）を対象に，ローリング計画法を用いて，年間電気料金の最小化を図った．北海道電力の基本プラン（高圧電力）と市場価格連動プランの2つの料金体系を対象とし，2024年1月1日から12月31日（2月29日を除く365日）の実データ（17,520ステップ，30分間隔）を用いてシミュレーションを実施した．最適化には混合整数線形計画法（MILP）ソルバーPySCIPOptを使用し，96ステップ（48時間先）の予測期間を用いて計算を実行した．
+
+
+具体的な目的は以下の通りである：
+\begin{enumerate}
+    \item PV・蓄電池システムのローリング計画法の構築と実装
+    \item 北海道電力基本プランと市場価格連動プランの経済性比較
+    \item 2024年の実データを用いた年間電気料金の最小化
+    \item 蓄電池の最適充放電パターンの解明
+\end{enumerate}
+
+\section{システム構成と制約条件}
+
+\subsection{導入システムの仕様}
+
+本研究で対象とするシステムの仕様は以下の通りである：
+
+\begin{itemize}
+    \item \textbf{期間}：2024年1月1日から12月31日(2月29日を除く365日,17,520ステップ,30分間隔)
+    \item \textbf{太陽光発電システム}
+    \begin{itemize}
+        \item PV容量：250 kW
+        \item パネル設置方向：南向き
+        \item パネル設置角度：40°
+    \end{itemize}
+    \item \textbf{蓄電池システム}
+    \begin{itemize}
+        \item 蓄電池容量：860 kWh (430 kWh $\times$ 2)
+        \item 充放電最大出力：400 kW
+        \item SOC初期値：430 kWh (50\%)
+        \item 充電効率：0.98（仮定値）
+        \item 放電効率：0.98（仮定値）
+    \end{itemize}
+    \item \textbf{系統電力}
+    \begin{itemize}
+        \item 系統買電単価：市場価格連動（JEPX）または固定料金
+        \item 基本料金単価：2,829.60円/kW（北海道電力高圧電力）
+        \item 力率割引：85\%（基本料金15\%割引）
+        \item 売電：不可（売電量 = 0）
+    \end{itemize}
+\end{itemize}
+
+\subsection{制約条件}
+
+システム運用における主な制約条件は以下の通りである：
+
+\begin{itemize}
+    \item \textbf{電力収支制約}：各時刻において，PV発電量 + 買電量 + 蓄電池放電量 = 需要 + 蓄電池充電量
+    \item \textbf{蓄電池SOC制約}：$0 \leq \text{SOC}(t) \leq 860$ kWh
+    \item \textbf{充放電出力制約}：充電・放電それぞれ最大400 kW
+    \item \textbf{売電禁止制約}：売電量 = 0（PV余剰電力は不使用）
+    \item \textbf{非同時充放電制約}：同一時刻に充電と放電を同時に行わない
+\end{itemize}
+
+
+\section{最適化手法}
+
+\subsection{ローリング計画法の概要}
+
+本研究では，ローリング計画法を採用した．まず，時間軸 $t$ を 0.5 時間（30 分）ごとの等間隔グリッドで離散化し，各離散時刻を整数インデックス $k \in \mathbb{Z}$（$k=0,1,2,\dots$）で表す．「ステップ」はこの離散時刻の一単位を意味し，時刻 $k$ と時刻 $k+1$ の間隔が現実世界の 30 分に相当する．ここで，$\Delta t = 0.5$ 時間（30分）を時間刻み幅とする．
+
+各時刻区間 $[k\Delta t,(k+1)\Delta t)$ 内では，買電量や充放電電力などの\textbf{制御変数}が区間全体で一定であると仮定し，区間境界における値が最適化で決まる．ここで制御変数とは，システムを制御するために決定すべき変数を指し，本研究では以下が該当する：
+\begin{itemize}
+    \item \textbf{買電量} $s^{\mathrm{BY}}_{k}$：系統からどれだけ電力を購入するか
+    \item \textbf{充電電力} $x^{\mathrm{FC}}_{k}$：蓄電池にどれだけ充電するか
+    \item \textbf{放電電力} $x^{\mathrm{FD}}_{k}$：蓄電池からどれだけ放電するか
+\end{itemize}
+これらに対し，需要やPV発電量は外部環境によって決まるため制御できず，「外生変数」と呼ばれる．PV発電の余剰（不使用）は不等式制約により自動的に調整される．最適化の目的は，外生変数が与えられた状況で，制御変数を適切に決定して電気料金を最小化することである．
+
+\subsubsection{ローリング計画法の基本概念}
+
+ローリング計画法では，固定長の予測期間（ホライズン）を時間経過とともに前方に「転がして（rolling）」いく．1年間全体（17,520ステップ）を一度に最適化するのではなく，以下のように分割して実行する：
+
+\begin{itemize}
+    \item \textbf{第1回最適化}：時刻0から時刻95まで（96ステップ = 48時間）を最適化 → 時刻0の制御入力のみ実行
+    \item \textbf{第2回最適化}：時刻1から時刻96まで（96ステップ = 48時間）を最適化 → 時刻1の制御入力のみ実行
+    \item \textbf{第3回最適化}：時刻2から時刻97まで（96ステップ = 48時間）を最適化 → 時刻2の制御入力のみ実行
+    \item $\vdots$
+    \item \textbf{第17,520回最適化}：時刻17,519から時刻17,614まで（96ステップ）を最適化 → 時刻17,519の制御入力のみ実行
+\end{itemize}
+
+このように，予測期間を1ステップずつ前進させながら最適化を繰り返す．
+
+\subsubsection{ローリング計画法の利点}
+
+\begin{enumerate}
+    \item \textbf{計算負荷の軽減}：17,520ステップ全体を一度に最適化する場合，変数数が膨大となり計算が困難である．96ステップごとの最適化に分割することで，各最適化問題のサイズを実用的な範囲に抑えられる．
+
+    \item \textbf{最新情報の反映}：各時刻で最新のシステム状態（蓄電池SOC，気象予報など）を反映できる．実運用では予測誤差が生じるため，定期的に最適化を再計算することで精度が向上する．
+
+    \item \textbf{不確実性への対応}：将来の需要やPV発電は完全には予測できないため，予測期間を限定（48時間先まで）し，新しい情報が得られるたびに計画を更新する方が現実的である．
+\end{enumerate}
+
+\subsubsection{ローリング計画法の実行手順}
+
+ローリング計画法は以下の手順で実行される：
+
+\begin{enumerate}
+    \item 現在時刻 $k$ から将来 $k+H-1$ までの $H$ ステップ（計 $H\Delta t$ 時間）の予測期間を設定
+    \item 予測期間内のすべての制御変数列を含む最適化問題を解く
+    \item 解から得られた最初の1ステップ分（区間 $[k\Delta t, (k+1)\Delta t)$ に対応）の制御変数のみを実行
+    \item 時刻インデックスを $k \leftarrow k+1$ と更新し，上記を繰り返す
+\end{enumerate}
+
+ここで，各制御変数（買電量 $s^{\mathrm{BY}}_{k}$，充放電電力 $x^{\mathrm{FC}}_{k},x^{\mathrm{FD}}_{k}$ など）は区間 $[k\Delta t,(k+1)\Delta t)$ 内で一定と仮定する．本研究では，$H = 96$（48時間先）の予測期間を設定し，30分間隔で最適化を実行した．これにより，年間17,520回の最適化を実行し，各時刻で48時間先までの予測情報を活用した最適な運用計画を実現した．
+
+\subsection{定式化}
+
+\subsubsection{決定変数}
+
+最適化において決定すべき変数（決定変数）を以下に示す：
+
+\textbf{連続変数：}
+\begin{itemize}
+    \item $s^{\mathrm{BY}}_{k}$:買電量 [kW]
+    \item $s^{\mathrm{SL}}_{k}$:売電量 [kW]
+    \item $s^{\mathrm{BY}}_{\mathrm{MAX}}$:契約電力(予測期間内の最大買電量)[kW]
+    \item $b^{\mathrm{F}}_{k}$:蓄電池SOC [kWh]
+    \item $x^{\mathrm{FC1}}_{k}$:充電電力（変換前）[kW]
+    \item $x^{\mathrm{FC2}}_{k}$:充電電力（変換後）[kW]
+    \item $x^{\mathrm{FD1}}_{k}$:放電電力（変換前）[kW]
+    \item $x^{\mathrm{FD2}}_{k}$:放電電力（変換後）[kW]
+    \item $g^{\mathrm{P1}}_{k}$:PV発電可能量（入力データ）[kW]
+    \item $g^{\mathrm{P2}}_{k}$:実際に使用するPV発電量 [kW]
+    \item $d^{\mathrm{A1}}_{k}$:需要電力（変換前）[kW]
+    \item $d^{\mathrm{A2}}_{k}$:需要電力（変換後，入力データ）[kW]
+\end{itemize}
+
+\textbf{二値変数（0または1）：}
+\begin{itemize}
+    \item $z_{k}$:充放電の選択（1=充電可能，0=放電可能）
+\end{itemize}
+
+\subsubsection{目的関数}
+
+予測期間内の電気料金の総和を最小化する．電気料金は基本料金（契約電力に依存）とエネルギー料金（使用電力量に依存）から構成される：
+
+\begin{equation}
+\text{Minimize} \quad w_{\mathrm{basic}} \cdot s^{\mathrm{BY}}_{\mathrm{MAX}} + \sum_{k=0}^{H-1} p^{\mathrm{BY}}_{k} \cdot s^{\mathrm{BY}}_{k} \cdot 0.5
+\label{eq:objective}
+\end{equation}
+
+ここで，
+\begin{itemize}
+    \item $s^{\mathrm{BY}}_{k}$:時刻$k$における買電量 [kW]
+    \item $s^{\mathrm{BY}}_{\mathrm{MAX}}$:予測期間内の最大買電量(契約電力)[kW]
+    \item $w_{\mathrm{basic}}$:基本料金係数（後述） [円/kW]
+    \item $p^{\mathrm{BY}}_{k}$:時刻$k$における買電電力量価格 [円/kWh]
+    \item $0.5$: 30分間隔から時間単位への換算係数[h]
+    \item $H$:予測ステップ数(本研究では96ステップ)
+\end{itemize}
+
+基本料金係数$w_{\mathrm{basic}}$は，年間の基本料金を予測期間の長さに応じて按分したものであり，以下のように計算される．
+\begin{equation}
+    w_{\mathrm{basic}} = 2829.60 \times 0.85 \times 12 \times \frac{H \times 0.5}{24 \times 366}
+    \label{eq:weight_basic}
+\end{equation}
+この式は，年間の基本料金単価（2829.60円/kW・月 $\times$ 力率割引0.85 $\times$ 12ヶ月）を、1年間の総時間（$24 \times 366$[h]）で割り，それに予測期間（$H \times 0.5[h] = 48[h]$）を掛けることで，予測期間あたりの基本料金の重みを算出している．これにより，予測期間内のピーク電力 $s^{\mathrm{BY}}_{\mathrm{MAX}}$ が年間契約電力に与える影響を近似的に評価するための係数として機能する．
+最適化の予測期間が1年未満であるため，この計算はあくまで将来のピーク電力を抑制するための近似的な指標である．
+年間の基本料金は，シミュレーション完了後に，実際に記録された年間最大需要電力に基づいて別途計算される．
+年間の基本料金は，シミュレーション完了後に，実際に記録された年間最大需要電力に基づいて別途計算される．
+
+\subsubsection{制約条件}
+
+\textbf{(1) 電力収支制約}
+\begin{equation}
+g^{\mathrm{P2}}_{k} + s^{\mathrm{BY}}_{k} - s^{\mathrm{SL}}_{k} - x^{\mathrm{FC1}}_{k} + x^{\mathrm{FD2}}_{k} - d^{\mathrm{A1}}_{k} = 0, \quad \forall k \in \{0,1,2,\dots,H-1\}
+\end{equation}
+
+\textbf{(2) PV利用可能制約}
+\begin{equation}
+g^{\mathrm{P2}}_{k} \leq g^{\mathrm{P1}}_{k}, \quad \forall k \in \{0,1,2,\dots,H-1\}
+\end{equation}
+
+ここで，$g^{\mathrm{P1}}_{k}$は気象データから得られるPV発電可能量[kW]，$g^{\mathrm{P2}}_{k}$は実際に使用するPV発電量[kW]である．不等式制約とすることで，必要に応じてPV発電を使用しない柔軟性を持たせている．
+
+\textbf{(3) 需要変換効率}
+\begin{equation}
+d^{\mathrm{A2}}_{k} = \alpha_{\mathrm{DA}} \cdot d^{\mathrm{A1}}_{k}, \quad \forall k \in \{0,1,2,\dots,H-1\}
+\end{equation}
+
+ここで，$\alpha_{\mathrm{DA}} = 0.98$である．
+
+\textbf{(4) 充電プロセス}
+\begin{equation}
+x^{\mathrm{FC2}}_{k} = \alpha_{\mathrm{FC}} \cdot x^{\mathrm{FC1}}_{k}, \quad \forall k \in \{0,1,2,\dots,H-1\}
+\end{equation}
+
+\textbf{(5) 放電プロセス}
+\begin{equation}
+x^{\mathrm{FD2}}_{k} = \alpha_{\mathrm{FD}} \cdot x^{\mathrm{FD1}}_{k}, \quad \forall k \in \{0,1,2,\dots,H-1\}
+\end{equation}
+
+ここで，$\alpha_{\mathrm{FC}} = \alpha_{\mathrm{FD}} = 0.98$（仮定値）である．
+
+\textbf{(6) SOC更新式}
+
+初期SOCは以下で与えられる：
+\begin{equation}
+b^{\mathrm{F}}_{0} = b_{\mathrm{F}}^{\mathrm{init}} + x^{\mathrm{FC2}}_{0} \cdot 0.5 - x^{\mathrm{FD1}}_{0} \cdot 0.5
+\end{equation}
+
+ここで，$b_{\mathrm{F}}^{\mathrm{init}}$は最適化開始時（第0ステップの充放電前）のSOC初期値[kWh]である．
+
+$k \geq 1$のステップでは，以下の更新式に従う：
+\begin{equation}
+b^{\mathrm{F}}_{k} = b^{\mathrm{F}}_{k-1} + x^{\mathrm{FC2}}_{k} \cdot 0.5 - x^{\mathrm{FD1}}_{k} \cdot 0.5, \quad \forall k \in \{1,2,\dots,H-1\}
+\end{equation}
+
+ここで，係数$0.5$は時間間隔0.5時間（30分）を表す．充放電電力[kW]に時間[h]を乗じることで，エネルギー変化量[kWh]が得られる．自己放電は無視する．
+
+\textbf{(7) SOC範囲制約}
+\begin{equation}
+0 \leq b^{\mathrm{F}}_{k} \leq 860, \quad \forall k \in \{0,1,2,\dots,H-1\}
+\end{equation}
+
+\textbf{(8) 充放電電力制約}
+
+充放電電力の上限制約を以下のように設定する：
+\begin{align}
+0 &\leq x^{\mathrm{FC2}}_{k} \leq 400, \quad \forall k \in \{0,1,2,\dots,H-1\} \\
+0 &\leq x^{\mathrm{FD1}}_{k} \leq 400, \quad \forall k \in \{0,1,2,\dots,H-1\}
+\end{align}
+
+ここで，400kWは蓄電池の最大充放電出力である．変換前の充電電力$x^{\mathrm{FC1}}_{k}$と変換後の放電電力$x^{\mathrm{FD2}}_{k}$は，変換効率の制約(4)(5)により間接的に制限される．
+
+\textbf{(9) 非同時充放電制約}
+
+同一時刻に充電と放電を同時に行わないことを保証するため，二値変数$z_{k} \in \{0, 1\}$を導入し，以下の制約を設ける：
+\begin{align}
+x^{\mathrm{FC1}}_{k} &\leq M \cdot z_{k}, \quad \forall k \in \{0,1,2,\dots,H-1\} \\
+x^{\mathrm{FD1}}_{k} &\leq M \cdot (1 - z_{k}), \quad \forall k \in \{0,1,2,\dots,H-1\}
+\end{align}
+
+ここで，$M$は十分大きな定数（本実装では$M = 10^6$）である．$z_{k} = 1$のときは充電のみ可能，$z_{k} = 0$のときは放電のみ可能となる．
+
+\textbf{(10) 売電禁止制約}
+
+売電を禁止するため，売電量を0とする：
+\begin{equation}
+s^{\mathrm{SL}}_{k} = 0, \quad \forall k \in \{0,1,2,\dots,H-1\}
+\end{equation}
+
+\textbf{(11) 契約電力制約}
+\begin{equation}
+s^{\mathrm{BY}}_{k} \leq s^{\mathrm{BY}}_{\mathrm{MAX}}, \quad \forall k \in \{0,1,2,\dots,H-1\}
+\end{equation}
+
+この制約により，予測期間内の全ての買電量が契約電力$s^{\mathrm{BY}}_{\mathrm{MAX}}$以下となることを保証する．さらに，目的関数において$s^{\mathrm{BY}}_{\mathrm{MAX}}$に基本料金係数$w_{\mathrm{basic}}$が乗じられているため，最適化では$s^{\mathrm{BY}}_{\mathrm{MAX}}$を最小化しようとする．その結果，$s^{\mathrm{BY}}_{\mathrm{MAX}} = \max_{k \in \{0,1,\dots,H-1\}} s^{\mathrm{BY}}_{k}$（予測期間内の最大買電量）が自動的に成立する．
+
+\subsection{料金体系}
+
+\subsubsection{北海道電力基本プラン（高圧電力，一般料金）}
+
+表\ref{tab:hokkaido_tariff}に北海道電力の料金体系を示す．
+
+\begin{table}[H]
+\centering
+\caption{北海道電力の料金体系（2024年4月1日実施）}
+\label{tab:hokkaido_tariff}
+\begin{tabular}{lc}
+\toprule
+項目 & 料金単価 \\
+\midrule
+基本料金 & 2,829.60 円/kW \\
+電力量料金 & 21.51 円/kWh \\
+再エネ賦課金 & 3.98 円/kWh \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{基本料金の計算式:}
+\begin{equation}
+C_{\mathrm{basic}} = P_{\mathrm{contract}} \times 2829.60 \times 0.85 \times 12 \quad \text{[円/年]}
+\end{equation}
+
+ここで，$P_{\mathrm{contract}}$は契約電力であり，過去1年間の各月の最大需要電力のうち，最も大きい値を適用する．本シミュレーションでは，1年間の運用結果から得られた最大買電電力を$P_{\mathrm{contract}}$として事後的に計算している．
+
+\textbf{電力量料金の計算式:}
+\begin{equation}
+C_{\mathrm{energy}} = E_{\mathrm{month}} \times (21.51 + F_{\mathrm{adj}}(m) + 3.98) \quad \text{[円/月]}
+\end{equation}
+
+ここで，$E_{\mathrm{month}}$は月間電力使用量 [kWh]，$F_{\mathrm{adj}}(m)$は$m$月（$m \in \{1,2,\dots,12\}$）の燃料費調整額 [円/kWh]である．
+
+表\ref{tab:fuel_adjustment}に2024年の月別燃料費調整額を示す．
+
+\begin{table}[H]
+\centering
+\caption{2024年の月別燃料費調整額（北海道電力・高圧）}
+\label{tab:fuel_adjustment}
+\begin{tabular}{cc}
+\toprule
+月 & 燃料費調整額 [円/kWh] \\
+\midrule
+1月 & $-8.76$ \\
+2月 & $-8.59$ \\
+3月 & $-8.56$ \\
+4月 & $-8.85$ \\
+5月 & $-9.02$ \\
+6月 & $-7.47$ \\
+7月 & $-5.69$ \\
+8月 & $-5.69$ \\
+9月 & $-9.60$ \\
+10月 & $-9.47$ \\
+11月 & $-8.06$ \\
+12月 & $-5.83$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{市場価格連動プラン}
+
+市場価格連動プランでは，電力量料金がJEPX（日本卸電力取引所）のスポット価格に連動する．
+
+\textbf{電力量料金の計算式:}
+\begin{equation}
+C_{\mathrm{energy}} = E_{\mathrm{month}} \times (P_{\mathrm{JEPX}}(t) + 3.98) \quad \text{[円/月]}
+\end{equation}
+
+ここで，$P_{\mathrm{JEPX}}(t)$は時刻 $t$ のJEPXスポット価格 [円/kWh]である．基本料金は北海道電力と同額とする．
+
+\section{実験設定}
+
+\subsection{データ}
+
+\begin{itemize}
+    \item \textbf{期間}：2024年1月1日 ～ 12月31日(2月29日を除く365日)
+    \item \textbf{時間間隔}：30分
+    \item \textbf{消費電力データ}：20250901サンプルデータ.xlsx(「30分値」シートから取得,単位はkWh/30分)
+    \item \textbf{PV発電データ}：20250901サンプルデータ.xlsx(「30分値」シートから取得,単位はkWh/30分)
+    \item \textbf{JEPX価格データ}：一般社団法人日本卸電力取引所公開データ(2024年1月～12月のスポット価格,単位は円/kWh)(https://www.jepx.jp/electricpower/market-data/spot/より取得)
+    \item \textbf{注記}：2024年は閏年であるが,使用データは2月29日を含まない365日分である
+\end{itemize}
+
+\subsubsection{データ前処理}
+
+Excelファイルから読み込んだデータは，最適化計算の前に以下の単位変換を実施する：
+
+\begin{itemize}
+    \item \textbf{入力データ}：30分積算電力量 [kWh/30分]
+    \item \textbf{変換後データ}：平均電力 [kW]
+    \item \textbf{変換式}：$P_{\mathrm{avg}}[\mathrm{kW}] = E_{30\mathrm{min}}[\mathrm{kWh}] \div 0.5[\mathrm{h}]$
+\end{itemize}
+
+この変換により，30分間の電力量から1時間あたりの平均電力値が得られる．最適化では全て電力[kW]を基準とし，目的関数において電力量[kWh]への換算（$\times 0.5$時間）を行う．
+
+\subsection{計算環境}
+
+\begin{itemize}
+    \item \textbf{プログラミング言語}：Python 3.x
+    \item \textbf{最適化ソルバー}：PySCIPOpt
+    \item \textbf{データ処理}：pandas, numpy
+    \item \textbf{可視化}：matplotlib
+\end{itemize}
+
+\subsection{最適化パラメータ}
+
+\begin{itemize}
+    \item \textbf{予測期間}：$H = 96$ ステップ（48時間先まで予測）
+    \item \textbf{制御周期}：1ステップ（30分ごとに最適化を実行）
+\end{itemize}
+
+\section{結果}
+
+\subsection{年間電気料金の比較}
+
+表\ref{tab:annual_cost}に両プランの年間電気料金の比較結果を示す.2024年1月1日から12月31日(2月29日を除く365日,17,520ステップ)のローリング計画法を実行した結果,市場価格連動プランが北海道電力基本プランよりも経済的に有利であることが明らかになった.
+
+\begin{table}[H]
+\centering
+\caption{年間電気料金の比較（2024年実績）}
+\label{tab:annual_cost}
+\begin{tabular}{lrr}
+\toprule
+項目 & 北海道電力基本プラン & 市場価格連動プラン \\
+\midrule
+基本料金 [円] & 4,865,733 & 4,865,733 \\
+電力量料金 [円] & 23,591,725 & 14,943,459 \\
+燃料費調整額 [円] & $-8,130,558$ & - \\
+再エネ賦課金 [円] & 4,364,659 & 4,364,659 \\
+\midrule
+\textbf{年間合計 [円]} & \textbf{14,691,559} & \textbf{14,526,851} \\
+\midrule
+契約電力 [kW] & \multicolumn{2}{c}{168.59} \\
+年間削減額 [円] & \multicolumn{2}{c}{164,708} \\
+削減率 [\%] & \multicolumn{2}{c}{1.12} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent
+\textbf{計算条件：}
+\begin{itemize}
+    \item 北海道電力基本プラン：電力量料金21.51円/kWh + 月別燃料費調整額（-5.83〜-9.60円/kWh）+ 再エネ賦課金3.98円/kWh
+    \item 市場価格連動プラン：JEPX価格 + 再エネ賦課金3.98円/kWh
+    \item 契約電力は年間最大買電電力（168.59kW）で決定
+    \item 基本料金単価：2,829.60円/kW × 0.85（力率割引）× 12ヶ月
+\end{itemize}
+
+\subsection{システム運用統計}
+
+表\ref{tab:system_stats}に2024年の年間システム運用統計（市場価格連動プラン）を示す．
+
+\begin{table}[H]
+\centering
+\caption{年間システム運用統計（2024年・市場価格連動プラン）}
+\label{tab:system_stats}
+\begin{tabular}{lr}
+\toprule
+項目 & 値 \\
+\midrule
+総需要電力量 [kWh] & 812,982 \\
+総PV発電量 [kWh] & 287,633 \\
+\quad PV自家消費量 [kWh] & 287,633 \\
+\quad PV余剰量 [kWh] & 0 \\
+総買電量 [kWh] & 548,358 \\
+\midrule
+PV自給率 [\%] & 35.4 \\
+PV利用率 [\%] & 100.00 \\
+最大買電電力 [kW] & 168.59 \\
+平均買電電力 [kW] & 62.60 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent
+\noindent
+総需要電力量812,982kWhに対し，PV発電量287,633kWhの100\%が自家消費され，PV自給率35.4\%を達成した．買電量は548,358kWhである．PV使用量と買電量の合計（835,991kWh）が消費電力量を上回るのは，蓄電池の充放電効率による損失（約2.8\%）が含まれるためである．
+
+\subsection{年間のPV発電と買電の関係}
+
+年間のPV発電量・買電量・需要の推移を図\ref{fig:pv_buysell}に示す．
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{../png/annual_pv_buy_demand.png}
+\caption{年間のPV発電・買電・需要の推移}
+\label{fig:pv_buysell}
+\end{figure}
+
+\subsection{年間の蓄電池SOC推移}
+
+年間の蓄電池SOC（State of Charge）の推移を図\ref{fig:annual_soc}に示す．SOCは1日の中で充放電を繰り返しながら変動していることがわかる．年間平均SOCは349.68kWh（40.7\%）である．
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{../png/annual_soc.png}
+\caption{年間の蓄電池SOC推移（2024年）}
+\label{fig:annual_soc}
+\end{figure}
+
+\subsection{蓄電池の運用パターン}
+
+代表的な1日の運用パターンを，需要レベルが異なる2つのケースについて分析する．図\ref{fig:battery_operation}に需要が高い日（約2,450 kWh），図\ref{fig:battery_operation_low}に需要が低い日（約1,290 kWh）の比較を示す．いずれのケースでも需要がほぼ同等でPV発電量が大きく異なる2日を選定し，PV発電量の違いが蓄電池運用に与える影響を明確にする．各グラフは左軸に電力フロー（需要，PV発電，買電）を，右軸に蓄電池SOCの時間変化を示している．
+
+\subsubsection{需要が高い日の比較（約2,450 kWh）}
+
+図\ref{fig:battery_operation}に，需要が高い日の運用パターンを示す．PV発電量が多い日（2024年6月2日，1,433 kWh）とPV発電量が少ない日（2024年6月24日，237 kWh）を比較する．
+
+\textbf{PV発電量が多い日（6月2日）：}
+\begin{itemize}
+    \item \textbf{総需要}：2,436 kWh，\textbf{PV発電}：1,433 kWh，\textbf{買電}：1,275 kWh
+    \item \textbf{昼間（6:00〜18:00）}：PV発電が豊富で需要を大きく上回る時間帯があり，余剰電力を蓄電池に充電．SOCが最大694 kWhまで上昇
+    \item \textbf{夜間（18:00〜6:00）}：PV発電がゼロとなり，蓄電池から放電して需要を賄う．買電と蓄電池放電を組み合わせた運用
+\end{itemize}
+
+\textbf{PV発電量が少ない日（6月24日）：}
+\begin{itemize}
+    \item \textbf{総需要}：2,461 kWh，\textbf{PV発電}：237 kWh，\textbf{買電}：2,076 kWh
+    \item \textbf{昼間（6:00〜18:00）}：PV発電が少なく，需要の大部分を買電で賄う．蓄電池への充電は限定的でSOCは最大206 kWhに留まる
+    \item \textbf{夜間（18:00〜6:00）}：PV発電がゼロとなり，買電が主体．蓄電池は補助的に使用される
+\end{itemize}
+
+需要が高い場合，PV発電が豊富な日は買電を1,275 kWhに抑制できる一方，PV発電が少ない日は2,076 kWhの買電が必要となり，約1.6倍の差が生じる．
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{../png/daily_battery_pattern.png}
+\caption{需要が高い日の運用パターン（需要約2,450 kWh）．上：PV発電量が多い日（2024年6月2日，PV発電1,433 kWh），下：PV発電量が少ない日（2024年6月24日，PV発電237 kWh）．左軸：電力フロー（需要，PV発電，買電），右軸：蓄電池SOCの時間変化．}
+\label{fig:battery_operation}
+\end{figure}
+
+\subsubsection{需要が低い日の比較（約1,290 kWh）}
+
+図\ref{fig:battery_operation_low}に，需要が低い日の運用パターンを示す．PV発電量が多い日（2024年2月5日，1,019 kWh）とPV発電量が少ない日（2024年1月22日，281 kWh）を比較する．
+
+\textbf{PV発電量が多い日（2月5日）：}
+\begin{itemize}
+    \item \textbf{総需要}：1,284 kWh，\textbf{PV発電}：1,019 kWh，\textbf{買電}：270 kWh
+    \item \textbf{昼間（6:00〜18:00）}：PV発電が需要を大きく上回り，余剰電力を蓄電池に充電．SOCが最大609 kWhまで上昇
+    \item \textbf{夜間（18:00〜6:00）}：蓄電池から放電して需要の大部分を賄い，買電を最小限に抑制
+\end{itemize}
+
+\textbf{PV発電量が少ない日（1月22日）：}
+\begin{itemize}
+    \item \textbf{総需要}：1,298 kWh，\textbf{PV発電}：281 kWh，\textbf{買電}：862 kWh
+    \item \textbf{昼間（6:00〜18:00）}：PV発電が少なく，需要の大部分を買電で賄う．蓄電池への充電は限定的でSOCは最大468 kWhに留まる
+    \item \textbf{夜間（18:00〜6:00）}：買電が主体となり，蓄電池は補助的に使用される
+\end{itemize}
+
+需要が低い場合，PV発電が豊富な日は買電を270 kWhに大幅に抑制できる一方，PV発電が少ない日は862 kWhの買電が必要となり，約3.2倍の差が生じる．需要が低い場合の方が，PV発電量の違いによる買電量の差がより顕著に現れることが確認できる．
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{../png/daily_battery_pattern_low_demand.png}
+\caption{需要が低い日の運用パターン（需要約1,290 kWh）．上：PV発電量が多い日（2024年2月5日，PV発電1,019 kWh），下：PV発電量が少ない日（2024年1月22日，PV発電281 kWh）．左軸：電力フロー（需要，PV発電，買電），右軸：蓄電池SOCの時間変化．}
+\label{fig:battery_operation_low}
+\end{figure}
+
+\subsubsection{需要レベルによる運用特性の違い}
+
+需要が高い日と低い日の比較から，以下のような運用特性の違いが明らかになった：
+
+\begin{itemize}
+    \item \textbf{買電量の削減率}：需要が低い場合(3.2倍の差)の方が，需要が高い場合(1.6倍の差)よりもPV発電量の違いによる買電量の差が顕著
+    \item \textbf{蓄電池の活用度}：需要が低い場合，PV発電が豊富な日は蓄電池を効果的に活用して夜間需要を賄うことができる
+    \item \textbf{PV自給率}：需要が低い場合，PV発電が豊富な日は買電を大幅に削減でき(買電比率21.0\%)，高い自給率を実現できる
+\end{itemize}
+
+\subsubsection{買電電力が一定値となることの理由}
+
+図\ref{fig:battery_operation}および図\ref{fig:battery_operation_low}において，買電電力がある程度一定の値を保つことが観察される．これは，本最適化問題におけるデマンド料金制度と契約電力制約の影響によるものである．
+
+本最適化では，目的関数は基本料金と電力量料金の合計として定式化される：
+\begin{equation}
+\text{総コスト} = \text{基本料金} \times \text{sBYMAX} + \sum_{k} \text{電力量単価}_k \times \text{sBY}_k \times 0.5
+\end{equation}
+
+ここで，$\text{sBYMAX}$は契約電力（予測期間内の最大買電電力），$\text{sBY}_k$は時刻$k$における買電電力である．制約条件として，各時刻の買電電力は契約電力以下でなければならない：
+\begin{equation}
+\text{sBY}_k \leq \text{sBYMAX}, \quad \forall k
+\end{equation}
+
+このとき，最適化は以下のように動作する：
+
+\begin{enumerate}
+    \item \textbf{契約電力の決定}：予測期間内で必要な最大買電電力に基づいて$\text{sBYMAX}$が決定される
+    \item \textbf{基本料金の固定化}：一度$\text{sBYMAX}$が決まると，その期間内の基本料金は固定される
+    \item \textbf{買電電力の平準化}：契約電力の枠内で買電できる余地がある場合，需要変動は蓄電池の充放電で吸収し，買電電力を一定に保つことが合理的となる
+    \item \textbf{蓄電池との協調}：買電電力を一定に保つことで，契約電力を最小限に抑えつつ，需要変動は蓄電池で吸収する運用が実現される
+\end{enumerate}
+
+例えば，6月2日のデータでは，買電電力は夜間で約57 kW，PV発電開始後は約52 kWの2段階の一定値を示す．これにより，需要変動（54〜146 kW）に対して，PV発電と蓄電池の充放電を組み合わせることで，契約電力を最小化しつつ需要を満たす運用が達成されている．
+
+\section{考察}
+
+\subsection{予測期間の影響分析（24時間から48時間への拡張）}
+
+本研究では，当初24時間先（48ステップ）の予測期間でローリング計画法を実施していたが，PV発電が豊富な日において，蓄電池SOCが満充電（860kWh）に到達しないという現象が観察された．
+
+ここで，\textbf{PV余剰}とは，PV発電量のうち，需要に使用されず，蓄電池にも充電されず，系統への逆潮流もできない（逆潮流不可設定のため）ために，やむを得ず捨てられるエネルギーを指す．年間のPV余剰は0 kWhで，PV発電総量575,266 kWhの100\%が有効活用されている．PV余剰が発生する可能性がある状況は，主に以下の2つである：
+
+\begin{enumerate}
+    \item \textbf{蓄電池が満充電（860 kWh）に達している}：これ以上充電できないため，余剰PVを蓄えられない
+    \item \textbf{需要が低く，PV発電が豊富}：需要を満たした後の余剰PVを活用できない
+\end{enumerate}
+
+年間で最もPV余剰が発生しやすい条件の日（蓄電池が満充電に近く，PV発電が豊富）でも，本システムでは余剰は発生せず，PV発電の100\%が有効活用されていることが確認できた．
+
+元々の本システムは，予測期間を24時間としており，24時間とした場合に，PV余剰が多い日において蓄電池が満充電に到達しない現象が見られた．PVエネルギーを今日蓄電することと明日蓄電することは，エネルギー的に同等であり，満充電まで蓄電する方が合理的ではないかと考えた．また，予測期間を24時間としているため，翌日のPV発電パターンを考慮できず，蓄電池の充電が抑制されている可能性があると考えた．そこで，予測期間を48時間先（96ステップ）に延長し，同一データで再度最適化を実施した．表\ref{tab:horizon_comparison}に24時間予測と48時間予測の比較結果を示す．
+
+\begin{table}[H]
+\centering
+\caption{予測期間24時間と48時間の比較（年間統計）}
+\label{tab:horizon_comparison}
+\begin{tabular}{lrr}
+\toprule
+項目 & 24時間予測 & 48時間予測 \\
+\midrule
+PV利用率 [\%] & 99.95 & 100.00 \\
+PV余剰量 [kWh] & 141 & 0 \\
+契約電力 [kW] & 174.25 & 168.59 \\
+年間買電量 [kWh] & 1,102,672 & 1,096,716 \\
+年間コスト [円] & 14,850,905 & 14,526,851 \\
+年間満充電回数 & 4 & 90 \\
+平均SOC [kWh] & 124.72 & 349.68 \\
+平均SOC [\%] & 14.5 & 40.7 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent
+\textbf{主な知見:}
+
+\begin{enumerate}
+    \item \textbf{PV利用率}：24時間予測は99.95\%，48時間予測は100.00\%で，48時間予測の方がPV余剰を完全に解消できている．
+
+    \item \textbf{蓄電池運用}：24時間予測は平均SOC 14.5\%(満充電4回),48時間予測は40.7\%(満充電90回)と大きく異なる．
+
+    \item \textbf{契約電力削減効果}：48時間予測(168.59 kW)は24時間予測(174.25 kW)より5.66 kW(3.25\%)低く，年間約¥324,054削減．買電量はほぼ同等のため，コスト差は契約電力の差異に起因．
+
+    \item \textbf{予測期間の影響}：24時間予測では近視眼的な運用となり蓄電池を十分活用できない(平均SOC 14.5\%)．48時間予測により2日間の需給パターンを考慮した戦略的運用が可能となり，契約電力削減に寄与．
+\end{enumerate}
+
+\noindent
+以上の結果から，本研究では\textbf{48時間先（96ステップ）の予測期間}を採用し，以降の分析はすべてこの設定で実施した結果を示している．
+
+\subsection{経済性評価}
+
+北海道電力基本プランと市場価格連動プランを比較した結果，以下の知見が得られた：
+
+\begin{enumerate}
+    \item \textbf{市場価格連動プランの優位性}：年間電気料金は市場価格連動プランが14,526,851円，北海道電力基本プランが14,691,559円となり，市場価格連動プランが\textbf{164,708円（1.12\%）安価}であった．
+
+    \item \textbf{価格変動リスク}：市場価格連動プランは，JEPX価格の変動を受けるため，月別の料金変動が大きくなる可能性がある．2024年は比較的価格が安定していたが，市場価格高騰時には北海道電力基本プランの方が有利になる可能性がある．
+\end{enumerate}
+
+\subsection{蓄電池の運用戦略}
+
+最適化結果（市場価格連動プラン）から，以下の蓄電池運用戦略が明らかになった：
+
+\begin{enumerate}
+    \item \textbf{昼間充電}：PV発電が豊富な昼間に蓄電池を充電し，余剰電力を有効活用
+    \item \textbf{夜間・ピーク時放電}：電力価格が高い時間帯や需要ピーク時に蓄電池から放電し，買電量を削減
+    \item \textbf{SOC管理}：年間平均SOC 349.68kWh（40.7\%）を維持し，充放電の柔軟性を確保．図\ref{fig:annual_soc}に示すように，蓄電池容量860kWhに対して適切な運用範囲を維持している．春季はPV発電が最も豊富(日平均936kWh)なため高いSOC(平均44.6\%)を維持し，冬季はPV発電が少ない(日平均732kWh)ため低めのSOC(平均34.3\%)となる季節変動が見られる．
+\end{enumerate}
+
+\subsection{PV・蓄電池システムの効果}
+
+PV・蓄電池システムの導入により，以下の効果が確認された（市場価格連動プラン）：
+
+\begin{enumerate}
+    \item \textbf{PV自家消費}：PV発電量287,633kWhの100\%を自家消費し，総需要812,982kWhの35.4\%をPVで賄った．
+    \item \textbf{PV利用率}:PV発電量287,633kWhのうち100\%を自家消費し,完全なPV利用率を達成した.
+    \item \textbf{需要の平準化}：蓄電池により買電電力の変動を抑制し契約電力を削減するとともに，時間帯別の価格差を活用した経済運転が行われている．
+\end{enumerate}
+
+\subsection{制約条件の影響とPV余剰電力}
+
+\begin{enumerate}
+    \item \textbf{売電禁止の影響}:売電ができないが，本最適化では蓄電池の効果的な活用により，PV余剰は0kWh（PV利用率100\%）を達成した（市場価格連動プラン）．
+
+    図\ref{fig:pv_curtailment}に，需要が少なく満充電に到達した代表的な日(2024年2月25日)の運用パターンを示す．この日は需要1,121kWh，PV発電979kWh，買電501kWhで，13:30に満充電(860kWh)に到達した．グラフの左軸が電力フロー(需要，PV発電，PV使用，買電)，右軸が蓄電池SOCを示している．2月25日は朝6:00のSOCが215kWhの状態で開始し，PV発電が豊富な昼間に蓄電池への充電を継続し，13:30に満充電(860kWh)に到達した．満充電到達後も，PV発電は需要を満たすために使用され続け，PV余剰は発生せず，PV利用率100\%を達成している．この日の需要は年間平均(2,227kWh)の約半分であり，満充電到達日の中でも最も需要が少ない日である．
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{../png/pv_curtailment_pattern.png}
+    \caption{需要が少なく満充電に到達した日の運用パターン（2024年2月25日，需要1,121kWh）}
+    \label{fig:pv_curtailment}
+\end{figure}
+
+    \item \textbf{PV余剰調整機能の効果}：PV発電の不等号制約（$g_{\mathrm{P2}} \leq g_{\mathrm{P1}}$）により，必要最小限のPV余剰を自動的に調整できる．
+
+    \item \textbf{契約電力の抑制}：目的関数に契約電力を組み込むことで，最大買電電力を168.59kW（両プラン共通）に抑制できた．エネルギー料金のみを最小化する場合，電力価格が安い時間帯に蓄電池を急速充電することで契約電力が大幅に増大する可能性があるが，本手法ではそれを回避している．
+
+    \item \textbf{蓄電池容量の妥当性}：860kWhの蓄電池容量は1日の需要変動（平均92.8kW，最大538.78kW）に対して適切であり，充放電出力400kWも需要ピークに対応可能である．
+\end{enumerate}
+
+\section{まとめ}
+
+北海道十勝地方のPV・蓄電池システム(PV容量250kW,蓄電池容量860kWh)を対象に,ローリング計画法による年間電気料金の最小化を実施した.対象期間は2024年1月1日から12月31日(2月29日を除く365日,17,520ステップ)である.主な結果は以下の通りである：
+
+\begin{enumerate}
+    \item 北海道電力基本プランと市場価格連動プランの年間電気料金を比較した結果,市場価格連動プランが\textbf{¥14,526,851},北海道電力基本プランが\textbf{¥14,691,559}となり,市場価格連動プランが\textbf{¥164,708安価(1.12\%削減)}であった.
+
+    \item PV自給率35.4\%,PV利用率100\%を達成し,年間総需要812,982kWhに対して287,633kWhをPV自家消費で賄った.
+
+    \item \textbf{ローリング計画法と予測期間の影響}：当初24時間先(48ステップ)の予測期間で実施した結果,蓄電池の平均SOCが14.5\%と低く,満充電に到達するのは年間4回のみであった.予測期間を48時間先(96ステップ)に延長することで,平均SOC 40.7\%(満充電90回)を実現し,契約電力を5.66kW削減(年間約¥324,054削減)できた.短期的な予測期間では最適化の視野が狭くなり,局所的には合理的でも大局的には非効率な判断が行われる可能性がある.特に連続する複数日でPV余剰が発生しやすい春季では,2日間の需給パターンを考慮できるより長期の予測期間が有効であることが示された.
+\end{enumerate}
+
+\noindent
+\textbf{注記}：本研究では2024年1月1日から12月31日のデータを使用したが,2月29日(閏日)は欠損しているため,実質的には365日分(17,520ステップ)のデータに基づく分析である.
+
+\end{document}
