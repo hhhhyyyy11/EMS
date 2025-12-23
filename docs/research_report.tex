@@ -234,8 +234,14 @@ b^{\mathrm{F}}_{k} = b^{\mathrm{F}}_{k-1} + x^{\mathrm{FC2}}_{k} \cdot 0.5 - x^{
 
 \textbf{(7) SOC範囲制約}
 \begin{equation}
-0 \leq b^{\mathrm{F}}_{k} \leq 860, \quad \forall k \in \{0,1,2,\dots,H-1\}
+0.05\times b^{\max}_{\mathrm{F}} \leq b^{\mathrm{F}}_{k} \leq 0.95\times b^{\max}_{\mathrm{F}}, \quad \forall k \in \{0,1,2,\dots,H-1\}
 \end{equation}
+
+蓄電池全容量を $b^{\max}_{\mathrm{F}}=860\ \mathrm{kWh}$ としているため，上式は数値的に
+\begin{equation*}
+    43\ \mathrm{kWh} \leq b^{\mathrm{F}}_{k} \leq 817\ \mathrm{kWh}
+\end{equation*}
+と表現できる．
 
 \textbf{(8) 充放電電力制約}
 

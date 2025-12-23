@@ -899,6 +899,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--excel', default='data/20250901サンプルデータ.xlsx')
     parser.add_argument('--sheet', default='30分値')
+    parser.add_argument('--bF_max', type=float, default=None, help='蓄電池全容量 [kWh]（例: 860） - 指定すると params["bF_max"] を上書き')
     parser.add_argument('--horizon', type=int, default=96)  # 48時間先まで予測（96ステップ）
     parser.add_argument('--time_limit', type=float, default=10.0)
     parser.add_argument('--max_steps', type=int, default=None)
@@ -948,6 +949,13 @@ def main():
         'year': 2024,            # データ年: 2024年
     }
 
+    # apply CLI overrides
+    if args.bF_max is not None:
+        try:
+            params['bF_max'] = float(args.bF_max)
+        except Exception:
+            pass
+
     print('Reading', args.excel, 'sheet', args.sheet)
     df = read_sample_excel(args.excel, sheet_name=args.sheet)
 
@@ -992,8 +1000,8 @@ def main():
     df_res_hokkaido = run_rolling(df, horizon=args.horizon, control_horizon=1, time_limit=args.time_limit,
                                    max_steps=args.max_steps, params=params, price_data=None)
 
-    # SOC容量ごとにサブフォルダを作成
-    soc_label = f"soc{params['bF_max']}"
+    # 出力サブフォルダ名は常に bF_max の値に連動させる
+    soc_label = f"soc{int(params['bF_max'])}"
     results_dir = os.path.join('results', soc_label)
     png_dir = os.path.join('png', soc_label)
     os.makedirs(results_dir, exist_ok=True)
