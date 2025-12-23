@@ -16,9 +16,10 @@ import os
 plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'Hiragino Sans', 'Yu Gothic', 'Meirio', 'TakaoPGothic', 'IPAexGothic']
 plt.rcParams['axes.unicode_minus'] = False
 
-def generate_daily_pattern_graph(date1='2024-06-02', date2='2024-06-24'):
+def generate_daily_pattern_graph(date1='2024-06-02', date2='2024-06-24', results_dir='results', png_dir='png'):
     """
     2つの日の運用パターンを比較したグラフを生成
+    results_dir, png_dir: サブフォルダ対応（例: results/soc860, png/soc860）
 
     Parameters:
     -----------
@@ -26,11 +27,15 @@ def generate_daily_pattern_graph(date1='2024-06-02', date2='2024-06-24'):
         1つ目の対象日付 (YYYY-MM-DD形式) - PV発電量が多い日
     date2 : str
         2つ目の対象日付 (YYYY-MM-DD形式) - PV発電量が少ない日
+    results_dir : str
+        入力CSVのディレクトリ
+    png_dir : str
+        出力PNGのディレクトリ
     """
-    # データ読み込み
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(script_dir)
-    results_file = os.path.join(project_root, 'results', 'rolling_results.csv')
+    results_file = os.path.join(project_root, results_dir, 'rolling_results.csv')
+    os.makedirs(os.path.join(project_root, png_dir), exist_ok=True)
 
     print(f'\n=== 日次パターングラフ生成 ===')
     print(f'データ読み込み: {results_file}')
@@ -136,7 +141,7 @@ def generate_daily_pattern_graph(date1='2024-06-02', date2='2024-06-24'):
     plt.tight_layout()
 
     # 保存
-    output_file = os.path.join(project_root, 'png', 'daily_battery_pattern.png')
+    output_file = os.path.join(project_root, png_dir, 'daily_battery_pattern.png')
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     print(f'✓ グラフを保存: {output_file}')
 
@@ -159,5 +164,17 @@ if __name__ == '__main__':
     # 需要がほぼ同等(約2,450 kWh)でPV発電量が大きく異なる2日を比較
     # 2024-06-02: 需要2,436 kWh, PV発電1,433 kWh
     # 2024-06-24: 需要2,461 kWh, PV発電237 kWh
-    generate_daily_pattern_graph('2024-06-02', '2024-06-24')
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--soc', type=str, default=None, help='SOCサブフォルダ名（例: soc860）')
+    args = parser.parse_args()
+
+    if args.soc:
+        results_dir = f'results/{args.soc}'
+        png_dir = f'png/{args.soc}'
+    else:
+        results_dir = 'results'
+        png_dir = 'png'
+
+    generate_daily_pattern_graph('2024-06-02', '2024-06-24', results_dir=results_dir, png_dir=png_dir)
     print('\n完了しました!')

@@ -249,6 +249,13 @@ def build_and_solve_horizon(demand_kW, bF0, params, pv_kW=None, time_limit=60, d
     # 基本料金の重み付け係数
     # 1ヶ月の予測期間(H時刻)から年間への換算
     basic_charge_rate = 2829.60 * 0.85  # 円/kW/月
+    # SOC容量制限（5%〜95%）
+    bF_max = params.get('bF_max', 860)
+    soc_min = bF_max * 0.05
+    soc_max = bF_max * 0.95
+    for k in range(H):
+        model.addCons(bF[k] >= soc_min)
+        model.addCons(bF[k] <= soc_max)
     # MPCの予測期間(30分×Hステップ)を月数に換算
     horizon_hours = H * 0.5  # 時間単位
     horizon_months = horizon_hours / (24 * 30)  # 概算の月数
@@ -563,8 +570,8 @@ def run_rolling(df, horizon=96, control_horizon=1, time_limit=60, max_steps=None
     return df_res
 
 
-def save_plots_and_pdf(df_res, out_prefix='rolling_results'):
-    os.makedirs('png', exist_ok=True)
+def save_plots_and_pdf(df_res, out_prefix='rolling_results', png_dir='png'):
+    os.makedirs(png_dir, exist_ok=True)
     # 1) Time series: consumption, pv, pv_used, net demand
     plt.figure(figsize=(12, 4))
     ax = plt.gca()
@@ -579,7 +586,7 @@ def save_plots_and_pdf(df_res, out_prefix='rolling_results'):
     ax.set_ylabel('kW')
     ax.legend(ncol=3)
     ax.grid(alpha=0.3)
-    p_timeseries = f'png/{out_prefix}_timeseries.png'
+    p_timeseries = os.path.join(png_dir, f'{out_prefix}_timeseries.png')
     plt.tight_layout()
     plt.savefig(p_timeseries, dpi=200)
     plt.close()
@@ -595,7 +602,7 @@ def save_plots_and_pdf(df_res, out_prefix='rolling_results'):
     ax.set_title('Grid buy/sell (per interval)')
     ax.legend()
     ax.grid(alpha=0.3)
-    p_buysell = f'png/{out_prefix}_buysell.png'
+    p_buysell = os.path.join(png_dir, f'{out_prefix}_buysell.png')
     plt.tight_layout()
     plt.savefig(p_buysell, dpi=200)
     plt.close()
@@ -613,7 +620,7 @@ def save_plots_and_pdf(df_res, out_prefix='rolling_results'):
     ax.set_title('Battery SOC and charge/discharge (first-step)')
     ax.legend(ncol=2)
     ax.grid(alpha=0.3)
-    p_battery = f'png/{out_prefix}_battery.png'
+    p_battery = os.path.join(png_dir, f'{out_prefix}_battery.png')
     plt.tight_layout()
     plt.savefig(p_battery, dpi=200)
     plt.close()
@@ -634,7 +641,7 @@ def save_plots_and_pdf(df_res, out_prefix='rolling_results'):
     ax.set_title('PV allocation: used vs surplus')
     ax.legend()
     ax.grid(alpha=0.2)
-    p_pvstack = f'png/{out_prefix}_pvstack.png'
+    p_pvstack = os.path.join(png_dir, f'{out_prefix}_pvstack.png')
     plt.tight_layout()
     plt.savefig(p_pvstack, dpi=200)
     plt.close()
@@ -667,7 +674,7 @@ def save_plots_and_pdf(df_res, out_prefix='rolling_results'):
     plt.text(0.01, 0.99, 'Summary', fontsize=14, weight='bold', va='top')
     for i, line in enumerate(summary_text):
         plt.text(0.01, 0.9 - i * 0.13, line, fontsize=10, va='top')
-    p_summary = f'png/{out_prefix}_summary.png'
+    p_summary = os.path.join(png_dir, f'{out_prefix}_summary.png')
     plt.tight_layout()
     plt.savefig(p_summary, dpi=200)
     plt.close()
@@ -723,15 +730,19 @@ def save_plots_and_pdf(df_res, out_prefix='rolling_results'):
     return images, out_pdf
 
 
-def generate_monthly_figures():
+def generate_monthly_figures(results_dir='results', png_dir='png', soc_label=None):
     """
     月別統計グラフを生成する関数
-    results/rolling_results.csvから読み込んで、png/ディレクトリにグラフを保存
+    results_dir/rolling_results.csvから読み込んで、png_dir/ディレクトリにグラフを保存
+    results_dir, png_dir: サブフォルダ対応（例: results/soc860, png/soc860）
+    soc_label: サブフォルダ名（例: soc860）
     """
     import json
+    import os
 
     # データ読み込み
-    df = pd.read_csv('results/rolling_results.csv')
+    results_csv = os.path.join(results_dir, 'rolling_results.csv')
+    df = pd.read_csv(results_csv)
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     df['month'] = df['timestamp'].dt.month
     df['pv_curtailed'] = df['pv_kW'] - df['pv_used_kW']
@@ -831,8 +842,9 @@ def generate_monthly_figures():
     ax4.legend(loc='upper right')
 
     plt.tight_layout()
-    os.makedirs('png', exist_ok=True)
-    plt.savefig('png/monthly_statistics.png', dpi=300, bbox_inches='tight')
+    os.makedirs(png_dir, exist_ok=True)
+    out_monthly_stats = os.path.join(png_dir, 'monthly_statistics.png')
+    plt.savefig(out_monthly_stats, dpi=300, bbox_inches='tight')
     plt.close()
 
     # 月別契約電力（最大買電電力）
@@ -854,13 +866,19 @@ def generate_monthly_figures():
         ax.text(month, value + 5, f'{value:.1f}', ha='center', va='bottom', fontsize=9)
 
     plt.tight_layout()
-    plt.savefig('png/monthly_contract_power.png', dpi=300, bbox_inches='tight')
+    out_contract_power = os.path.join(png_dir, 'monthly_contract_power.png')
+    plt.savefig(out_contract_power, dpi=300, bbox_inches='tight')
     plt.close()
 
     # 月別統計をCSVに保存
     monthly_stats['最大買電電力'] = monthly_max_buy
-    os.makedirs('data', exist_ok=True)
-    monthly_stats.to_csv('data/monthly_statistics.csv', encoding='utf-8-sig')
+    # dataディレクトリは親フォルダ基準で保存
+    data_dir = os.path.join(os.path.dirname(results_dir), 'data')
+    os.makedirs(data_dir, exist_ok=True)
+    if soc_label is None:
+        soc_label = os.path.basename(results_dir)
+    out_csv = os.path.join(data_dir, f'monthly_statistics_{soc_label}.csv')
+    monthly_stats.to_csv(out_csv, encoding='utf-8-sig')
 
 
 def main():
@@ -974,7 +992,14 @@ def main():
     df_res_hokkaido = run_rolling(df, horizon=args.horizon, control_horizon=1, time_limit=args.time_limit,
                                    max_steps=args.max_steps, params=params, price_data=None)
 
-    out_csv_hokkaido = 'results/rolling_results_hokkaido_basic.csv'
+    # SOC容量ごとにサブフォルダを作成
+    soc_label = f"soc{params['bF_max']}"
+    results_dir = os.path.join('results', soc_label)
+    png_dir = os.path.join('png', soc_label)
+    os.makedirs(results_dir, exist_ok=True)
+    os.makedirs(png_dir, exist_ok=True)
+
+    out_csv_hokkaido = os.path.join(results_dir, f'rolling_results_hokkaido_basic.csv')
     df_res_hokkaido.to_csv(out_csv_hokkaido)
     print(f'✓ Saved {out_csv_hokkaido}')
 
@@ -993,7 +1018,7 @@ def main():
         df_res_market = run_rolling(df, horizon=args.horizon, control_horizon=1, time_limit=args.time_limit,
                                      max_steps=args.max_steps, params=params, price_data=price_data)
 
-        out_csv_market = 'results/rolling_results_market_linked.csv'
+        out_csv_market = os.path.join(results_dir, f'rolling_results_market_linked.csv')
         df_res_market.to_csv(out_csv_market)
         print(f'✓ Saved {out_csv_market}')
 
@@ -1009,44 +1034,44 @@ def main():
         df_res = df_res_hokkaido
         out_csv = out_csv_hokkaido
 
-    # メインの結果CSVを保存（後方互換性のため）
-    df_res.to_csv('results/rolling_results.csv')
-    print(f'\n✓ Saved results/rolling_results.csv (メイン結果)')
+    # メインの結果CSVもSOC容量ごとに保存
+    out_csv_main = os.path.join(results_dir, 'rolling_results.csv')
+    df_res.to_csv(out_csv_main)
+    print(f'\n✓ Saved {out_csv_main} (メイン結果)')
 
     # ========================================
-    # 3️⃣ 年間料金比較
-    # ========================================
-    print('\n' + '='*70)
-    print('3️⃣  年間電気料金比較')
-    print('='*70)
+    # 年間グラフの自動生成
+    try:
+        import subprocess
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        annual_graph_script = os.path.join(script_dir, 'generate_annual_graph.py')
+        subprocess.run(['python3', annual_graph_script, '--soc', soc_label], check=True)
+        print('✓ 年間グラフ（PV発電・買電・需要、SOC推移）の生成が完了しました')
+    except Exception as e:
+        print(f'⚠ 年間グラフの生成に失敗しました: {e}')
+        traceback.print_exc()
 
-    print(f"\n北海道電力基本プラン: {hokkaido_costs['total']:,.0f}円")
-    print(f"  - 基本料金: {hokkaido_costs['basic_charge']:,.0f}円")
-    print(f"  - 電力量料金: {hokkaido_costs['energy_charge']:,.0f}円")
-    print(f"  - 燃料費調整額: {hokkaido_costs['fuel_adjustment']:,.0f}円")
-    print(f"  - 再エネ賦課金: {hokkaido_costs['renewable_levy']:,.0f}円")
-    print(f"  - 契約電力: {hokkaido_costs['peak_demand_kW']:.2f}kW")
+    # 日次パターングラフの自動生成
+    try:
+        import subprocess
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        daily_pattern_script = os.path.join(script_dir, 'generate_daily_pattern.py')
+        subprocess.run(['python3', daily_pattern_script, '--soc', soc_label], check=True)
+        print('✓ 日次パターングラフ（2024年5月15日）の生成が完了しました')
+    except Exception as e:
+        print(f'⚠ 日次パターングラフの生成に失敗しました: {e}')
+        traceback.print_exc()
 
-    if market_costs is not None:
-        print(f"\n市場価格連動プラン: {market_costs['total']:,.0f}円")
-        print(f"  - 基本料金: {market_costs['basic_charge']:,.0f}円")
-        print(f"  - 市場価格料金: {market_costs['energy_charge']:,.0f}円")
-        print(f"  - 再エネ賦課金: {market_costs['renewable_levy']:,.0f}円")
-        print(f"  - 契約電力: {market_costs['peak_demand_kW']:.2f}kW")
-
-        savings = hokkaido_costs['total'] - market_costs['total']
-        savings_pct = (savings / hokkaido_costs['total']) * 100
-        print(f"\n差額: {savings:,.0f}円 ({savings_pct:.2f}%)")
-        print(f"→ 市場価格連動プランが{'安い' if savings > 0 else '高い'}!")
-
-        # 比較結果をJSON保存
-        comparison_data = {
-            'hokkaido_basic': hokkaido_costs,
-            'market_linked': market_costs,
-            'difference': savings,
-            'percent_diff': savings_pct,
-            'cheaper_plan': 'market_linked' if savings > 0 else 'hokkaido_basic'
-        }
+    # PV余剰パターングラフの自動生成
+    try:
+        import subprocess
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        pv_curtailment_script = os.path.join(script_dir, 'generate_pv_curtailment_pattern.py')
+        subprocess.run(['python3', pv_curtailment_script, '--soc', soc_label], check=True)
+        print('✓ PV余剰パターングラフ（最大余剰日）の生成が完了しました')
+    except Exception as e:
+        print(f'⚠ PV余剰パターングラフの生成に失敗しました: {e}')
+        traceback.print_exc()
     else:
         comparison_data = {
             'hokkaido_basic': hokkaido_costs,
@@ -1055,7 +1080,7 @@ def main():
 
     # 年間料金比較データをJSONファイルに保存
     import json
-    json_path = 'results/annual_cost_comparison.json'
+    json_path = os.path.join(results_dir, 'annual_cost_comparison.json')
     with open(json_path, 'w', encoding='utf-8') as f:
         json.dump(comparison_data, f, ensure_ascii=False, indent=2)
     print(f'\n✓ Saved annual cost comparison to {json_path}')
@@ -1065,13 +1090,16 @@ def main():
     print('4️⃣  グラフ生成中...')
     print('='*70)
 
-    images, out_pdf = save_plots_and_pdf(df_res)
+    # グラフもSOCごとにpng/socXXX/へ保存
+    images, out_pdf = save_plots_and_pdf(df_res, out_prefix='rolling_results', png_dir=png_dir)
     print('✓ Saved images:', images)
     print('✓ Saved PDF:', out_pdf)
 
     # 月別統計グラフの自動生成
     try:
-        generate_monthly_figures()
+        # 月別統計もSOCごとに保存
+        soc_label = os.path.basename(results_dir)
+        generate_monthly_figures(results_dir=results_dir, png_dir=png_dir, soc_label=soc_label)
         print('✓ 月別統計グラフの生成が完了しました')
     except Exception as e:
         print(f'⚠ 月別統計グラフの生成に失敗しました: {e}')

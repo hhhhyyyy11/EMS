@@ -52,19 +52,24 @@ def find_max_pv_surplus_day(results_file):
 
     return str(max_day['date'])
 
-def generate_pv_curtailment_pattern(target_date=None):
+def generate_pv_curtailment_pattern(target_date=None, results_dir='results', png_dir='png'):
     """
     PV余剰が発生している日のパターンを生成
+    results_dir, png_dir: サブフォルダ対応（例: results/soc860, png/soc860）
 
     Parameters:
     -----------
     target_date : str or None
         対象日付 (YYYY-MM-DD形式)。Noneの場合は自動的に最大余剰日を選択
+    results_dir : str
+        入力CSVのディレクトリ
+    png_dir : str
+        出力PNGのディレクトリ
     """
-    # データ読み込み
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(script_dir)
-    results_file = os.path.join(project_root, 'results', 'rolling_results.csv')
+    results_file = os.path.join(project_root, results_dir, 'rolling_results.csv')
+    os.makedirs(os.path.join(project_root, png_dir), exist_ok=True)
 
     # target_dateがNoneの場合、最大余剰日を自動検索
     if target_date is None:
@@ -145,7 +150,7 @@ def generate_pv_curtailment_pattern(target_date=None):
     plt.tight_layout()
 
     # 保存
-    output_file = os.path.join(project_root, 'png', 'pv_curtailment_pattern.png')
+    output_file = os.path.join(project_root, png_dir, 'pv_curtailment_pattern.png')
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     print(f'✓ グラフを保存: {output_file}')
 
@@ -168,6 +173,18 @@ def generate_pv_curtailment_pattern(target_date=None):
 
 if __name__ == '__main__':
     # 引数なしの場合は自動的に最大余剰日を選択
-    generate_pv_curtailment_pattern()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--soc', type=str, default=None, help='SOCサブフォルダ名（例: soc860）')
+    args = parser.parse_args()
+
+    if args.soc:
+        results_dir = f'results/{args.soc}'
+        png_dir = f'png/{args.soc}'
+    else:
+        results_dir = 'results'
+        png_dir = 'png'
+
+    generate_pv_curtailment_pattern(results_dir=results_dir, png_dir=png_dir)
     print('\n完了しました！')
 

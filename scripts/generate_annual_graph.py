@@ -19,8 +19,8 @@ def generate_annual_pv_buy_demand_graph():
 
     # データ読み込み
     base_dir = Path(__file__).parent.parent
-    results_file = base_dir / 'results' / 'rolling_results.csv'
-    output_dir = base_dir / 'png'
+    results_file = Path(base_dir) / results_dir / 'rolling_results.csv'
+    output_dir = Path(base_dir) / png_dir
     output_dir.mkdir(exist_ok=True)
 
     print(f"データ読み込み中: {results_file}")
@@ -76,8 +76,8 @@ def generate_annual_soc_graph():
 
     # データ読み込み
     base_dir = Path(__file__).parent.parent
-    results_file = base_dir / 'results' / 'rolling_results.csv'
-    output_dir = base_dir / 'png'
+    results_file = Path(base_dir) / results_dir / 'rolling_results.csv'
+    output_dir = Path(base_dir) / png_dir
     output_dir.mkdir(exist_ok=True)
 
     print(f"\nデータ読み込み中: {results_file}")
@@ -125,5 +125,17 @@ def generate_annual_soc_graph():
     plt.close()
 
 if __name__ == '__main__':
-    generate_annual_pv_buy_demand_graph()
-    generate_annual_soc_graph()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--soc', type=str, default=None, help='SOCサブフォルダ名（例: soc860）')
+    args = parser.parse_args()
+
+    if args.soc:
+        results_dir = f'results/{args.soc}'
+        png_dir = f'png/{args.soc}'
+    else:
+        results_dir = 'results'
+        png_dir = 'png'
+
+    generate_annual_pv_buy_demand_graph(results_dir=results_dir, png_dir=png_dir)
+    generate_annual_soc_graph(results_dir=results_dir, png_dir=png_dir)

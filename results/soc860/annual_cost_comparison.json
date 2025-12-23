@@ -1,0 +1,12 @@
+{
+  "hokkaido_basic": {
+    "basic_charge": 4933364.7211312875,
+    "energy_charge": 11790411.873187063,
+    "fuel_adjustment": -4148114.4136836207,
+    "renewable_levy": 2181582.485136425,
+    "total": 14757244.665771155,
+    "peak_demand_kW": 170.92988689357077,
+    "annual_buy_kWh": 548136.3027980968
+  },
+  "message": "Fixed price mode - only Hokkaido Basic plan calculated"
+}
