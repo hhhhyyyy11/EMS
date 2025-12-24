@@ -8,6 +8,9 @@ import matplotlib.dates as mdates
 from fpdf import FPDF
 from pyscipopt import Model
 import traceback
+import logging
+import sys
+from typing import Optional
 
 
 def read_spot_price_data(path='spot_summary_2024.csv', path_2023='spot_summary_2023.csv'):
@@ -165,7 +168,7 @@ def calculate_hokkaido_electricity_cost(energy_kWh_monthly, peak_demand_kW, mont
     }
 
 
-def build_and_solve_horizon(demand_kW, bF0, params, pv_kW=None, time_limit=60, debug=False, skip_groups=None, buy_prices=None):
+def build_and_solve_horizon(demand_kW, bF0, params, pv_kW=None, time_limit: float = 60.0, debug=False, skip_groups=None, buy_prices=None):
     # demand_kW: array-like length H
     # buy_prices: array-like length H with prices for each time step (optional)
     H = len(demand_kW)
@@ -423,7 +426,7 @@ def build_and_solve_horizon(demand_kW, bF0, params, pv_kW=None, time_limit=60, d
     return res, status
 
 
-def run_rolling(df, horizon=96, control_horizon=1, time_limit=60, max_steps=None, params=None, price_data=None):
+def run_rolling(df, horizon=96, control_horizon=1, time_limit: float = 60.0, max_steps=None, params=None, price_data=None):
     if params is None:
         params = {}
     # provide defaults if missing
@@ -744,7 +747,7 @@ def generate_monthly_figures(results_dir='results', png_dir='png', soc_label=Non
     results_csv = os.path.join(results_dir, 'rolling_results.csv')
     df = pd.read_csv(results_csv)
     df['timestamp'] = pd.to_datetime(df['timestamp'])
-    df['month'] = df['timestamp'].dt.month
+    df['month'] = pd.DatetimeIndex(df['timestamp']).month
     df['pv_curtailed'] = df['pv_kW'] - df['pv_used_kW']
 
     # 月別集計
@@ -1080,6 +1083,16 @@ def main():
     except Exception as e:
         print(f'⚠ PV余剰パターングラフの生成に失敗しました: {e}')
         traceback.print_exc()
+
+    # 比較データの作成: 市場連動プランの結果が存在すれば両方を比較して出力
+    if market_costs is not None:
+        # 両プランの比較情報を作成
+        cheaper = 'market_linked' if market_costs.get('total', float('inf')) < hokkaido_costs.get('total', float('inf')) else 'hokkaido_basic'
+        comparison_data = {
+            'hokkaido_basic': hokkaido_costs,
+            'market_linked': market_costs,
+            'cheaper_plan': cheaper
+        }
     else:
         comparison_data = {
             'hokkaido_basic': hokkaido_costs,
@@ -1309,7 +1322,46 @@ def calculate_annual_costs(df_res, price_data=None):
     }
 
 
+def setup_logging(logfile: Optional[str] = None, level: int = logging.INFO):
+    """Configure logging to console and optional logfile."""
+    logger = logging.getLogger()
+    logger.setLevel(level)
+
+    # remove existing handlers to avoid duplicate logs on repeated setup
+    if logger.handlers:
+        for h in list(logger.handlers):
+            logger.removeHandler(h)
+
+    fmt = logging.Formatter('%(asctime)s %(levelname)-8s %(message)s', '%Y-%m-%d %H:%M:%S')
+
+    # console handler
+    ch = logging.StreamHandler(sys.stdout)
+    ch.setLevel(level)
+    ch.setFormatter(fmt)
+    logger.addHandler(ch)
+
+    # file handler
+    if logfile:
+        fh = logging.FileHandler(logfile, encoding='utf-8')
+        fh.setLevel(level)
+        fh.setFormatter(fmt)
+        logger.addHandler(fh)
+
+    return logger
+
+
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Rolling optimization runner')
+    parser.add_argument('--logfile', type=str, default=None, help='Path to logfile (optional)')
+    # parse only logfile here and pass the rest to main via sys.argv
+    known_args, remaining = parser.parse_known_args()
+
+    # initialize logging
+    setup_logging(known_args.logfile)
+
+    # call main with remaining args available in sys.argv
+    # reconstruct argv for the main argument parser
+    sys.argv = [sys.argv[0]] + remaining
     main()
 
 
@@ -1406,7 +1458,7 @@ def validate_results(csv_path='results/rolling_results.csv', battery_capacity=86
         return None
 
     df = pd.read_csv(csv_path, parse_dates=['datetime'])
-    df['date'] = df['datetime'].dt.date
+    df['date'] = df['datetime'].apply(lambda x: x.date() if pd.notnull(x) else None)
 
     validation_results = {}
 
@@ -1513,7 +1565,7 @@ def verify_specific_dates(csv_path='results/rolling_results.csv', dates_to_check
         dates_to_check = []
 
     df = pd.read_csv(csv_path, parse_dates=['datetime'])
-    df['date'] = df['datetime'].dt.date
+    df['date'] = df['datetime'].apply(lambda x: x.date() if pd.notnull(x) else None)
 
     results = {}
 
@@ -1574,7 +1626,7 @@ def find_representative_day(csv_path='results/rolling_results.csv', battery_capa
         return None
 
     df = pd.read_csv(csv_path, parse_dates=['datetime'])
-    df['date'] = df['datetime'].dt.date
+    df['date'] = df['datetime'].apply(lambda x: x.date() if pd.notnull(x) else None)
 
     # 各日の余剰量とフル充電達成を集計
     daily_stats = df.groupby('date').agg({

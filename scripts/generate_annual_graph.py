@@ -14,14 +14,19 @@ plt.rcParams['font.sans-serif'] = ['Hiragino Sans', 'Yu Gothic', 'Meirio', 'Taka
 plt.rcParams['font.family'] = 'sans-serif'
 plt.rcParams['axes.unicode_minus'] = False
 
-def generate_annual_pv_buy_demand_graph():
-    """年間のPV発電・買電・需要の推移グラフを生成"""
+def generate_annual_pv_buy_demand_graph(results_dir: str = 'results', png_dir: str = 'png'):
+    """年間のPV発電・買電・需要の推移グラフを生成
+
+    Args:
+        results_dir: results ディレクトリまたはサブフォルダパス（workspace 相対）
+        png_dir: png 出力ディレクトリまたはサブフォルダパス（workspace 相対）
+    """
 
     # データ読み込み
     base_dir = Path(__file__).parent.parent
-    results_file = Path(base_dir) / results_dir / 'rolling_results.csv'
-    output_dir = Path(base_dir) / png_dir
-    output_dir.mkdir(exist_ok=True)
+    results_file = Path(base_dir) / Path(results_dir) / 'rolling_results.csv'
+    output_dir = Path(base_dir) / Path(png_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"データ読み込み中: {results_file}")
     df = pd.read_csv(results_file)
@@ -71,14 +76,20 @@ def generate_annual_pv_buy_demand_graph():
 
     plt.close()
 
-def generate_annual_soc_graph():
-    """年間のSOC推移グラフを生成"""
+def generate_annual_soc_graph(results_dir: str = 'results', png_dir: str = 'png', bF_max: int = 860):
+    """年間のSOC推移グラフを生成
+
+    Args:
+        results_dir: results ディレクトリまたはサブフォルダパス（workspace 相対）
+        png_dir: png 出力ディレクトリまたはサブフォルダパス（workspace 相対）
+        bF_max: 蓄電池容量（kWh） - グラフの目盛り等で使用
+    """
 
     # データ読み込み
     base_dir = Path(__file__).parent.parent
-    results_file = Path(base_dir) / results_dir / 'rolling_results.csv'
-    output_dir = Path(base_dir) / png_dir
-    output_dir.mkdir(exist_ok=True)
+    results_file = Path(base_dir) / Path(results_dir) / 'rolling_results.csv'
+    output_dir = Path(base_dir) / Path(png_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"\nデータ読み込み中: {results_file}")
     df = pd.read_csv(results_file)
@@ -101,11 +112,12 @@ def generate_annual_soc_graph():
     ax.xaxis.set_major_locator(mdates.MonthLocator())
     plt.xticks(rotation=45)
 
-    # Y軸の範囲設定（0-860kWh）
-    ax.set_ylim(0, 860)
+    # Y軸の範囲設定（0 - bF_max）
+    ax.set_ylim(0, bF_max)
 
-    # 容量の50%ライン（430kWh）を追加
-    ax.axhline(y=430, color='red', linestyle='--', linewidth=1, alpha=0.5, label='50% (430kWh)')
+    # 容量の50%ラインを追加
+    half = bF_max / 2.0
+    ax.axhline(y=half, color='red', linestyle='--', linewidth=1, alpha=0.5, label=f'50% ({half:.0f}kWh)')
     ax.legend(loc='upper right', fontsize=10)
 
     plt.tight_layout()
@@ -116,10 +128,13 @@ def generate_annual_soc_graph():
     print(f"グラフ保存完了: {output_file}")
 
     # 統計情報表示
-    print("\n=== SOC統計 ===")
-    print(f"平均SOC: {df['bF'].mean():.2f} kWh ({100*df['bF'].mean()/860:.1f}%)")
-    print(f"最大SOC: {df['bF'].max():.2f} kWh ({100*df['bF'].max()/860:.1f}%)")
-    print(f"最小SOC: {df['bF'].min():.2f} kWh ({100*df['bF'].min()/860:.1f}%)")
+    print(f"\n=== SOC統計 ===")
+    mean = df['bF'].mean()
+    maxv = df['bF'].max()
+    minv = df['bF'].min()
+    print(f"平均SOC: {mean:.2f} kWh ({100*mean/bF_max:.1f}%)")
+    print(f"最大SOC: {maxv:.2f} kWh ({100*maxv/bF_max:.1f}%)")
+    print(f"最小SOC: {minv:.2f} kWh ({100*minv/bF_max:.1f}%)")
     print(f"標準偏差: {df['bF'].std():.2f} kWh")
 
     plt.close()
@@ -137,5 +152,18 @@ if __name__ == '__main__':
         results_dir = 'results'
         png_dir = 'png'
 
+    # bF_max が環境やファイル名から決まる場合は引数で上書き可能
+    bF_max = None
+    try:
+        # results ディレクトリ内の rolling_results.csv に bF_max 情報がある場合に読み取る
+        sample = pd.read_csv(Path(__file__).parent.parent / Path(results_dir) / 'rolling_results.csv', nrows=1)
+        if 'bF_max' in sample.columns:
+            bF_max = int(sample['bF_max'].iloc[0])
+    except Exception:
+        bF_max = None
+
+    if bF_max is None:
+        bF_max = 860
+
     generate_annual_pv_buy_demand_graph(results_dir=results_dir, png_dir=png_dir)
-    generate_annual_soc_graph(results_dir=results_dir, png_dir=png_dir)
+    generate_annual_soc_graph(results_dir=results_dir, png_dir=png_dir, bF_max=bF_max)
