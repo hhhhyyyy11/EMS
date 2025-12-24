@@ -254,16 +254,29 @@ def build_and_solve_horizon(demand_kW, bF0, params, pv_kW=None, time_limit: floa
     basic_charge_rate = 2829.60 * 0.85  # 円/kW/月
     # SOC容量制限（5%〜95%）
     bF_max = params.get('bF_max', 860)
-    soc_min = bF_max * 0.05
-    soc_max = bF_max * 0.95
-    for k in range(H):
-        model.addCons(bF[k] >= soc_min)
-        model.addCons(bF[k] <= soc_max)
-    # MPCの予測期間(30分×Hステップ)を月数に換算
-    horizon_hours = H * 0.5  # 時間単位
-    horizon_months = horizon_hours / (24 * 30)  # 概算の月数
-    # 年間基本料金への換算係数
-    basic_charge_weight = basic_charge_rate * 12 * horizon_months
+
+    # 蓄電池容量が0の場合の特別処理
+    if bF_max <= 0:
+        # 蓄電池なし: SOC=0, 充放電=0に固定
+        for k in range(H):
+            model.addCons(bF[k] == 0)
+            model.addCons(xFC1[k] == 0)
+            model.addCons(xFC2[k] == 0)
+            model.addCons(xFD1[k] == 0)
+            model.addCons(xFD2[k] == 0)
+        soc_min = 0
+        soc_max = 0
+    else:
+        soc_min = bF_max * 0.05
+        soc_max = bF_max * 0.95
+        for k in range(H):
+            model.addCons(bF[k] >= soc_min)
+            model.addCons(bF[k] <= soc_max)
+    # 基本料金の重み係数（仕様書どおりの按分係数）
+    # w_basic = (2829.60 × 0.85 × 12 × (H × 0.5)) / (24 × 365)
+    # ここで H × 0.5 は予測期間の時間数
+    horizon_hours = H * 0.5  # 予測期間（時間）
+    basic_charge_weight = (2829.60 * 0.85 * 12 * horizon_hours) / (24 * 365)
 
     # 売電価格: 逆潮流不可の場合は0円/kWh
     sell_price = params.get('sell_price', 0.0)
@@ -299,7 +312,8 @@ def build_and_solve_horizon(demand_kW, bF0, params, pv_kW=None, time_limit: floa
             model.addCons(dA2[k] == params.get('alpha_DA', 0.98) * dA1[k])
 
         # battery SOC update (with 0.5h time step)
-        if 'soc_update' not in skip_groups:
+        # 蓄電池容量が0の場合はSOC更新制約をスキップ（既にbF=0に固定済み）
+        if 'soc_update' not in skip_groups and bF_max > 0:
             if k > 0:
                 # bF[k] = bF[k-1] + xFC2[k] * 0.5 - xFD1[k] * 0.5
                 # SOC更新: 前ステップのSOC + 充電エネルギー - 放電エネルギー
@@ -324,18 +338,20 @@ def build_and_solve_horizon(demand_kW, bF0, params, pv_kW=None, time_limit: floa
                         model.addCons(bF[0] == bF0_val + 0.5 * xFC2[0] - 0.5 * xFD1[0])
 
         # battery bounds and charge/discharge limits
-        if 'battery_bounds' not in skip_groups:
+        # 蓄電池容量が0の場合はスキップ（既に固定済み）
+        if 'battery_bounds' not in skip_groups and bF_max > 0:
             model.addCons(bF[k] <= params.get('bF_max', 860))
             model.addCons(bF[k] >= 0.0)  # バッテリー残量は非負
-        if 'charge_eq' not in skip_groups:
+        if 'charge_eq' not in skip_groups and bF_max > 0:
             model.addCons(xFC2[k] == params.get('alpha_FC', 0.98) * xFC1[k])
             model.addCons(xFD2[k] == params.get('alpha_FD', 0.98) * xFD1[k])
-        if 'charge_limits' not in skip_groups:
+        if 'charge_limits' not in skip_groups and bF_max > 0:
             model.addCons(xFC2[k] <= params.get('aFC', 400))
             model.addCons(xFD1[k] <= params.get('aFD', 400))
 
         # 非同時充放電制約: 充電と放電を同時に行わない
-        if 'mutual_exclusion' not in skip_groups:
+        # 蓄電池容量が0の場合はスキップ
+        if 'mutual_exclusion' not in skip_groups and bF_max > 0:
             # z[k] = 1 のとき充電可能、z[k] = 0 のとき放電可能
             model.addCons(xFC1[k] <= M * z[k])
             model.addCons(xFD1[k] <= M * (1 - z[k]))
@@ -956,6 +972,8 @@ def main():
     if args.bF_max is not None:
         try:
             params['bF_max'] = float(args.bF_max)
+            # SOC初期値も容量の50%に自動更新
+            params['bF0'] = params['bF_max'] * 0.5
         except Exception:
             pass
 
@@ -1457,61 +1475,79 @@ def validate_results(csv_path='results/rolling_results.csv', battery_capacity=86
         print(f"警告: {csv_path} が見つかりません")
         return None
 
-    df = pd.read_csv(csv_path, parse_dates=['datetime'])
-    df['date'] = df['datetime'].apply(lambda x: x.date() if pd.notnull(x) else None)
+    # timestampカラムを読み込み（datetimeではなくtimestamp）
+    df = pd.read_csv(csv_path)
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df['date'] = pd.Series(df['timestamp'].dt.date) # type: ignore
 
     validation_results = {}
 
-    # 1. PV余剰日の特定
-    daily_surplus = df.groupby('date')['pv_curtail'].sum().reset_index()
-    daily_surplus.columns = ['date', 'total_surplus']
-    daily_surplus = daily_surplus[daily_surplus['total_surplus'] > 0].sort_values('total_surplus', ascending=False)
-    validation_results['pv_surplus_days'] = daily_surplus.head(10).to_dict('records')
+    # カラム名のマッピング（実際のCSVカラム名に対応）
+    # pv_surplus_kW: PV余剰量, bF: SOC, sBY: 買電, pv_kW: PV発電, demand_kW: 需要
 
-    # 2. フル充電日の特定
-    full_charge_days = df[df['soc'] >= battery_capacity - 0.1].groupby('date').size().reset_index()
-    full_charge_days.columns = ['date', 'full_charge_steps']
-    full_charge_days = full_charge_days.sort_values('full_charge_steps', ascending=False)
-    validation_results['full_charge_days'] = full_charge_days.head(10).to_dict('records')
+    # 1. PV余剰日の特定（pv_surplus_kW列を使用）
+    if 'pv_surplus_kW' in df.columns:
+        df['pv_surplus_kWh'] = df['pv_surplus_kW'] * 0.5  # 30分値なのでkWhに変換
+        daily_surplus = df.groupby('date')['pv_surplus_kWh'].sum().reset_index()
+        daily_surplus.columns = ['date', 'total_surplus']
+        daily_surplus = daily_surplus[daily_surplus['total_surplus'] > 0].sort_values('total_surplus', ascending=False)
+        validation_results['pv_surplus_days'] = daily_surplus.head(10).to_dict('records')
+    else:
+        validation_results['pv_surplus_days'] = []
+
+    # 2. フル充電日の特定（bF列を使用）
+    if 'bF' in df.columns:
+        full_charge_threshold = battery_capacity * 0.95  # 95%以上をフル充電とみなす
+        full_charge_days = df[df['bF'] >= full_charge_threshold].groupby('date').size().reset_index()
+        full_charge_days.columns = ['date', 'full_charge_steps']
+        full_charge_days = full_charge_days.sort_values('full_charge_steps', ascending=False)
+        validation_results['full_charge_days'] = full_charge_days.head(10).to_dict('records')
+    else:
+        validation_results['full_charge_days'] = []
 
     # 3. 年間統計
-    total_buy = df['buy'].sum()
-    avg_buy = df['buy'].mean()
-    avg_soc = df['soc'].mean()
-    total_pv = df['pv'].sum()
-    total_pv_to_battery = df['pv_to_battery'].sum()
-    total_pv_to_demand = df['pv_to_demand'].sum()
-    total_demand = df['demand'].sum()
-    total_surplus = df['pv_curtail'].sum()
+    total_buy = df['sBY'].sum() * 0.5 if 'sBY' in df.columns else 0  # kWh
+    avg_buy = df['sBY'].mean() if 'sBY' in df.columns else 0  # kW
+    avg_soc = df['bF'].mean() if 'bF' in df.columns else 0  # kWh
+    total_pv = df['pv_kW'].sum() * 0.5 if 'pv_kW' in df.columns else 0  # kWh
+    total_pv_used = df['pv_used_kW'].sum() * 0.5 if 'pv_used_kW' in df.columns else 0  # kWh
+    total_demand = df['demand_kW'].sum() * 0.5 if 'demand_kW' in df.columns else 0  # kWh
+    total_surplus = df['pv_surplus_kW'].sum() * 0.5 if 'pv_surplus_kW' in df.columns else 0  # kWh
 
     validation_results['annual_stats'] = {
         'total_buy_kwh': round(total_buy, 1),
         'avg_buy_kw': round(avg_buy, 2),
         'avg_soc_kwh': round(avg_soc, 2),
-        'avg_soc_percent': round(avg_soc / battery_capacity * 100, 1),
+        'avg_soc_percent': round(avg_soc / battery_capacity * 100, 1) if battery_capacity > 0 else 0,
         'total_pv_kwh': round(total_pv, 1),
+        'total_pv_used_kwh': round(total_pv_used, 1),
         'total_demand_kwh': round(total_demand, 1),
         'total_pv_surplus_kwh': round(total_surplus, 1),
-        'pv_utilization_percent': round((total_pv - total_surplus) / total_pv * 100, 2) if total_pv > 0 else 0
+        'pv_utilization_percent': round(total_pv_used / total_pv * 100, 2) if total_pv > 0 else 0,
+        'pv_self_sufficiency_percent': round(total_pv_used / total_demand * 100, 2) if total_demand > 0 else 0
     }
 
     # 4. 特定日付のデータ取得 (レポート用の代表例)
     validation_results['sample_dates'] = {}
 
     # 最も余剰が多い日
-    if len(daily_surplus) > 0:
-        max_surplus_date = daily_surplus.iloc[0]['date']
+    if len(validation_results.get('pv_surplus_days', [])) > 0:
+        max_surplus_date = validation_results['pv_surplus_days'][0]['date']
+        cols = ['timestamp', 'demand_kW', 'pv_kW', 'sBY', 'bF', 'pv_surplus_kW']
+        available_cols = [c for c in cols if c in df.columns]
         validation_results['sample_dates']['max_surplus'] = {
             'date': str(max_surplus_date),
-            'data': df[df['date'] == max_surplus_date][['datetime', 'demand', 'pv', 'buy', 'soc', 'pv_curtail']].to_dict('records')
+            'data': df[df['date'] == max_surplus_date][available_cols].to_dict('records')
         }
 
     # フル充電が最も長い日
-    if len(full_charge_days) > 0:
-        max_full_charge_date = full_charge_days.iloc[0]['date']
+    if len(validation_results.get('full_charge_days', [])) > 0:
+        max_full_charge_date = validation_results['full_charge_days'][0]['date']
+        cols = ['timestamp', 'demand_kW', 'pv_kW', 'sBY', 'bF', 'pv_surplus_kW']
+        available_cols = [c for c in cols if c in df.columns]
         validation_results['sample_dates']['max_full_charge'] = {
             'date': str(max_full_charge_date),
-            'data': df[df['date'] == max_full_charge_date][['datetime', 'demand', 'pv', 'buy', 'soc', 'pv_curtail']].to_dict('records')
+            'data': df[df['date'] == max_full_charge_date][available_cols].to_dict('records')
         }
 
     # レポート出力
@@ -1522,13 +1558,15 @@ def validate_results(csv_path='results/rolling_results.csv', battery_capacity=86
 
         print("\n【年間統計】")
         stats = validation_results['annual_stats']
-        print(f"  総買電量:     {stats['total_buy_kwh']:>10,.1f} kWh")
-        print(f"  平均買電:     {stats['avg_buy_kw']:>10,.2f} kW")
-        print(f"  平均SOC:      {stats['avg_soc_kwh']:>10,.2f} kWh ({stats['avg_soc_percent']:.1f}%)")
-        print(f"  総PV発電:     {stats['total_pv_kwh']:>10,.1f} kWh")
-        print(f"  総需要:       {stats['total_demand_kwh']:>10,.1f} kWh")
-        print(f"  総PV余剰:     {stats['total_pv_surplus_kwh']:>10,.1f} kWh")
-        print(f"  PV利用率:     {stats['pv_utilization_percent']:>10,.2f} %")
+        print(f"  総買電量:       {stats['total_buy_kwh']:>10,.1f} kWh")
+        print(f"  平均買電:       {stats['avg_buy_kw']:>10,.2f} kW")
+        print(f"  平均SOC:        {stats['avg_soc_kwh']:>10,.2f} kWh ({stats['avg_soc_percent']:.1f}%)")
+        print(f"  総PV発電:       {stats['total_pv_kwh']:>10,.1f} kWh")
+        print(f"  PV使用量:       {stats['total_pv_used_kwh']:>10,.1f} kWh")
+        print(f"  総需要:         {stats['total_demand_kwh']:>10,.1f} kWh")
+        print(f"  総PV余剰:       {stats['total_pv_surplus_kwh']:>10,.1f} kWh")
+        print(f"  PV利用率:       {stats['pv_utilization_percent']:>10,.2f} %")
+        print(f"  PV自給率:       {stats['pv_self_sufficiency_percent']:>10,.2f} %")
 
         print("\n【PV余剰発生日 Top 10】")
         for i, day in enumerate(validation_results['pv_surplus_days'], 1):
@@ -1564,8 +1602,9 @@ def verify_specific_dates(csv_path='results/rolling_results.csv', dates_to_check
     if dates_to_check is None:
         dates_to_check = []
 
-    df = pd.read_csv(csv_path, parse_dates=['datetime'])
-    df['date'] = df['datetime'].apply(lambda x: x.date() if pd.notnull(x) else None)
+    df = pd.read_csv(csv_path)
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df['date'] = df['timestamp'].apply(lambda x: x.date())
 
     results = {}
 
@@ -1578,15 +1617,15 @@ def verify_specific_dates(csv_path='results/rolling_results.csv', dates_to_check
             continue
 
         results[date_str] = {
-            'total_demand': round(day_data['demand'].sum(), 1),
-            'total_pv': round(day_data['pv'].sum(), 1),
-            'total_buy': round(day_data['buy'].sum(), 1),
-            'total_surplus': round(day_data['pv_curtail'].sum(), 1),
-            'avg_soc': round(day_data['soc'].mean(), 1),
-            'max_soc': round(day_data['soc'].max(), 1),
-            'min_soc': round(day_data['soc'].min(), 1),
-            'soc_at_14:00': round(day_data[day_data['datetime'].dt.hour == 14].iloc[0]['soc'], 1) if len(day_data[day_data['datetime'].dt.hour == 14]) > 0 else None,
-            'soc_at_16:00': round(day_data[day_data['datetime'].dt.hour == 16].iloc[0]['soc'], 1) if len(day_data[day_data['datetime'].dt.hour == 16]) > 0 else None
+            'total_demand': round(day_data['demand_kW'].sum() * 0.5, 1) if 'demand_kW' in day_data.columns else 0,
+            'total_pv': round(day_data['pv_kW'].sum() * 0.5, 1) if 'pv_kW' in day_data.columns else 0,
+            'total_buy': round(day_data['sBY'].sum() * 0.5, 1) if 'sBY' in day_data.columns else 0,
+            'total_surplus': round(day_data['pv_surplus_kW'].sum() * 0.5, 1) if 'pv_surplus_kW' in day_data.columns else 0,
+            'avg_soc': round(day_data['bF'].mean(), 1) if 'bF' in day_data.columns else 0,
+            'max_soc': round(day_data['bF'].max(), 1) if 'bF' in day_data.columns else 0,
+            'min_soc': round(day_data['bF'].min(), 1) if 'bF' in day_data.columns else 0,
+            'soc_at_14:00': round(day_data[day_data['timestamp'].dt.hour == 14].iloc[0]['bF'], 1) if 'bF' in day_data.columns and len(day_data[day_data['timestamp'].dt.hour == 14]) > 0 else None,
+            'soc_at_16:00': round(day_data[day_data['timestamp'].dt.hour == 16].iloc[0]['bF'], 1) if 'bF' in day_data.columns and len(day_data[day_data['timestamp'].dt.hour == 16]) > 0 else None
         }
 
         print(f"\n【{date_str} のデータ】")
@@ -1596,6 +1635,7 @@ def verify_specific_dates(csv_path='results/rolling_results.csv', dates_to_check
         print(f"  余剰合計:   {results[date_str]['total_surplus']:>8.1f} kWh")
         print(f"  平均SOC:    {results[date_str]['avg_soc']:>8.1f} kWh")
         print(f"  最大SOC:    {results[date_str]['max_soc']:>8.1f} kWh")
+        print(f"  最小SOC:    {results[date_str]['min_soc']:>8.1f} kWh")
         if results[date_str]['soc_at_14:00'] is not None:
             print(f"  14:00 SOC:  {results[date_str]['soc_at_14:00']:>8.1f} kWh")
         if results[date_str]['soc_at_16:00'] is not None:
@@ -1625,13 +1665,23 @@ def find_representative_day(csv_path='results/rolling_results.csv', battery_capa
         print(f"警告: {csv_path} が見つかりません")
         return None
 
-    df = pd.read_csv(csv_path, parse_dates=['datetime'])
-    df['date'] = df['datetime'].apply(lambda x: x.date() if pd.notnull(x) else None)
+    df = pd.read_csv(csv_path)
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df['date'] = df['timestamp'].apply(lambda x: x.date())
+
+    # PV余剰量をkWhに変換
+    if 'pv_surplus_kW' in df.columns:
+        df['pv_surplus_kWh'] = df['pv_surplus_kW'] * 0.5
+    else:
+        df['pv_surplus_kWh'] = 0
+
+    # フル充電の閾値（容量の95%）
+    full_charge_threshold = battery_capacity * 0.95
 
     # 各日の余剰量とフル充電達成を集計
     daily_stats = df.groupby('date').agg({
-        'pv_curtail': 'sum',
-        'soc': lambda x: (x >= battery_capacity - 0.1).sum()
+        'pv_surplus_kWh': 'sum',
+        'bF': lambda x: (x >= full_charge_threshold).sum() if 'bF' in df.columns else 0
     }).reset_index()
     daily_stats.columns = ['date', 'total_surplus', 'full_charge_steps']
 
@@ -1643,7 +1693,7 @@ def find_representative_day(csv_path='results/rolling_results.csv', battery_capa
     ].sort_values('total_surplus')
 
     print("\n【代表日候補】")
-    print(f"条件: PV余剰 {min_surplus}~{max_surplus} kWh, フル充電達成")
+    print(f"条件: PV余剰 {min_surplus}~{max_surplus} kWh, フル充電達成（SOC >= {full_charge_threshold:.0f} kWh）")
     print("-" * 60)
 
     for _, row in candidates.iterrows():

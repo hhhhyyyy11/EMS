@@ -55,7 +55,7 @@ $$
 
 ここで、基本料金の重み係数 $w_{basic}$ は、年間の基本料金単価を予測期間長に合わせて按分したものである：
 $$
-w_{basic} = \frac{2829.60 \times 0.85 \times 12 \times (H \times 0.5)}{24 \times 366}
+w_{basic} = \frac{2829.60 \times 0.85 \times 12 \times (H \times 0.5)}{24 \times 365}
 $$
 
 * $2829.60$: 基本料金単価 [円/kW]
