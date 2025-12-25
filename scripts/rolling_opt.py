@@ -1144,38 +1144,6 @@ def main():
         print(f'⚠ 月別統計グラフの生成に失敗しました: {e}')
         traceback.print_exc()
 
-    # 年間グラフの自動生成
-    try:
-        import subprocess
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        annual_graph_script = os.path.join(script_dir, 'generate_annual_graph.py')
-        subprocess.run(['python3', annual_graph_script], check=True)
-        print('✓ 年間グラフ（PV発電・買電・需要、SOC推移）の生成が完了しました')
-    except Exception as e:
-        print(f'⚠ 年間グラフの生成に失敗しました: {e}')
-        traceback.print_exc()
-
-    # 日次パターングラフの自動生成
-    try:
-        import subprocess
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        daily_pattern_script = os.path.join(script_dir, 'generate_daily_pattern.py')
-        subprocess.run(['python3', daily_pattern_script], check=True)
-        print('✓ 日次パターングラフ（2024年5月15日）の生成が完了しました')
-    except Exception as e:
-        print(f'⚠ 日次パターングラフの生成に失敗しました: {e}')
-        traceback.print_exc()
-
-    # PV余剰パターングラフの自動生成（最大余剰日を自動選択）
-    try:
-        import subprocess
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        pv_curtailment_script = os.path.join(script_dir, 'generate_pv_curtailment_pattern.py')
-        subprocess.run(['python3', pv_curtailment_script], check=True)
-        print('✓ PV余剰パターングラフ（最大余剰日）の生成が完了しました')
-    except Exception as e:
-        print(f'⚠ PV余剰パターングラフの生成に失敗しました: {e}')
-        traceback.print_exc()
 
     # データ保存場所のサマリーを表示
     print('\n' + '='*70)
