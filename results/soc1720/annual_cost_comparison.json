@@ -1,0 +1,20 @@
+{
+  "hokkaido_basic": {
+    "basic_charge": 4651417.017011416,
+    "energy_charge": 11791249.865059303,
+    "fuel_adjustment": -4147908.9424986634,
+    "renewable_levy": 2181737.53895565,
+    "total": 14476495.478527706,
+    "peak_demand_kW": 161.1610390788768,
+    "annual_buy_kWh": 548175.2610441332
+  },
+  "market_linked": {
+    "basic_charge": 6723060.3036734685,
+    "energy_charge": 6811881.274409242,
+    "renewable_levy": 2180303.0638550404,
+    "total": 15715244.641937751,
+    "peak_demand_kW": 232.9387755102041,
+    "annual_buy_kWh": 547814.8401645831
+  },
+  "cheaper_plan": "hokkaido_basic"
+}
