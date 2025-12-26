@@ -834,7 +834,9 @@ def generate_monthly_figures(results_dir='results', png_dir='png', soc_label=Non
     ax3.set_xticklabels(month_labels)
     ax3.legend()
     ax3.grid(True, alpha=0.3)
-    ax3.set_ylim(0, 105)
+    # 割合が100%を超える可能性があれば自動で広げる
+    max_pct = max(pv_self_sufficiency.max(), pv_utilization.max(), 100)
+    ax3.set_ylim(0, max_pct * 1.05)
 
     # 4. 年間蓄電池SOC推移
     ax4 = axes[1, 1]
@@ -849,7 +851,20 @@ def generate_monthly_figures(results_dir='results', png_dir='png', soc_label=Non
     ax4.set_ylabel('蓄電池SOC (kWh)', fontsize=12)
     ax4.set_title('年間蓄電池SOC推移', fontsize=13, fontweight='bold')
     ax4.grid(True, alpha=0.3)
-    ax4.set_ylim(0, 900)  # 蓄電池容量860kWhに余裕を持たせる
+    # bF_max を推定
+    try:
+        bF_max_local = 860
+        sample = pd.read_csv(os.path.join(results_dir, 'rolling_results.csv'), nrows=1)
+        if 'bF_max' in sample.columns:
+            bF_max_local = int(sample['bF_max'].iloc[0])
+        else:
+            import re
+            m = re.search(r'soc(\d+)', results_dir)
+            if m:
+                bF_max_local = int(m.group(1))
+    except Exception:
+        bF_max_local = 860
+    ax4.set_ylim(0, bF_max_local * 1.05)
 
     # X軸を月表示に
     ax4.xaxis.set_major_formatter(mdates.DateFormatter('%m月'))
@@ -857,7 +872,7 @@ def generate_monthly_figures(results_dir='results', png_dir='png', soc_label=Non
     plt.setp(ax4.xaxis.get_majorticklabels(), rotation=0)
 
     # 容量上限を示す線
-    ax4.axhline(y=860, color='red', linestyle='--', linewidth=1, alpha=0.5, label='容量上限 (860kWh)')
+    ax4.axhline(y=bF_max_local, color='red', linestyle='--', linewidth=1, alpha=0.5, label=f'容量上限 ({bF_max_local}kWh)')
     ax4.legend(loc='upper right')
 
     plt.tight_layout()

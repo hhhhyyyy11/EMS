@@ -91,10 +91,23 @@ def generate_daily_pattern_graph(date1='2024-02-05', date2='2024-01-22', results
     ax1_right = ax1_left.twinx()
     ax1_right.plot(df_day1['timestamp'], df_day1['bF'],
                    color='green', linewidth=2, linestyle='--', label='蓄電池SOC')
-    ax1_right.axhline(y=430, color='red', linestyle=':', linewidth=1, alpha=0.5, label='50%容量')
+    # bF_max を推定して右軸を設定
+    try:
+        bF_max = 860
+        sample = pd.read_csv(results_file, nrows=1)
+        if 'bF_max' in sample.columns:
+            bF_max = int(sample['bF_max'].iloc[0])
+        else:
+            import re
+            m = re.search(r'soc(\d+)', results_dir)
+            if m:
+                bF_max = int(m.group(1))
+    except Exception:
+        bF_max = 860
+    ax1_right.axhline(y=bF_max * 0.5, color='red', linestyle=':', linewidth=1, alpha=0.5, label='50%容量')
     ax1_right.set_ylabel('蓄電池SOC [kWh]', fontsize=12)
     ax1_right.legend(loc='upper right', fontsize=10)
-    ax1_right.set_ylim(0, 800)
+    ax1_right.set_ylim(0, bF_max * 1.05)
 
     # 時刻軸のフォーマット
     ax1_left.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
@@ -124,10 +137,10 @@ def generate_daily_pattern_graph(date1='2024-02-05', date2='2024-01-22', results
     ax2_right = ax2_left.twinx()
     ax2_right.plot(df_day2['timestamp'], df_day2['bF'],
                    color='green', linewidth=2, linestyle='--', label='蓄電池SOC')
-    ax2_right.axhline(y=430, color='red', linestyle=':', linewidth=1, alpha=0.5, label='50%容量')
+    ax2_right.axhline(y=bF_max * 0.5, color='red', linestyle=':', linewidth=1, alpha=0.5, label='50%容量')
     ax2_right.set_ylabel('蓄電池SOC [kWh]', fontsize=12)
     ax2_right.legend(loc='upper right', fontsize=10)
-    ax2_right.set_ylim(0, 800)
+    ax2_right.set_ylim(0, bF_max * 1.05)
 
     # 時刻軸のフォーマット
     ax2_left.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))

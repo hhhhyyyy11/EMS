@@ -8,6 +8,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from pathlib import Path
+from typing import Optional
 
 # 日本語フォント設定
 plt.rcParams['font.sans-serif'] = ['Hiragino Sans', 'Yu Gothic', 'Meirio', 'Takao', 'IPAexGothic', 'IPAPGothic']
@@ -76,7 +77,7 @@ def generate_annual_pv_buy_demand_graph(results_dir: str = 'results', png_dir: s
 
     plt.close()
 
-def generate_annual_soc_graph(results_dir: str = 'results', png_dir: str = 'png', bF_max: int = 860):
+def generate_annual_soc_graph(results_dir: str = 'results', png_dir: str = 'png', bF_max: Optional[int] = None):
     """年間のSOC推移グラフを生成
 
     Args:
@@ -112,7 +113,28 @@ def generate_annual_soc_graph(results_dir: str = 'results', png_dir: str = 'png'
     ax.xaxis.set_major_locator(mdates.MonthLocator())
     plt.xticks(rotation=45)
 
-    # Y軸の範囲設定（0 - bF_max）
+    # bF_max を動的に決定（引数 > CSV列 > png_dir名 > デフォルト860）
+    try:
+        if bF_max is None:
+            # try to read from results CSV
+            sample = pd.read_csv(Path(base_dir) / Path(results_dir) / 'rolling_results.csv', nrows=1)
+            if 'bF_max' in sample.columns:
+                bF_max = int(sample['bF_max'].iloc[0])
+            else:
+                # infer from results_dir or png_dir name like socNNN
+                import re
+                for token in (results_dir, png_dir):
+                    if isinstance(token, str):
+                        m = re.search(r'soc(\d+)', token)
+                        if m:
+                            bF_max = int(m.group(1))
+                            break
+        if bF_max is None:
+            bF_max = 860
+    except Exception:
+        bF_max = 860
+
+    # Y軸の範囲設定（0 - bF_max）: SOCの最大容量に合わせる
     ax.set_ylim(0, bF_max)
 
     # 容量の50%ラインを追加
@@ -161,9 +183,6 @@ if __name__ == '__main__':
             bF_max = int(sample['bF_max'].iloc[0])
     except Exception:
         bF_max = None
-
-    if bF_max is None:
-        bF_max = 860
 
     generate_annual_pv_buy_demand_graph(results_dir=results_dir, png_dir=png_dir)
     generate_annual_soc_graph(results_dir=results_dir, png_dir=png_dir, bF_max=bF_max)

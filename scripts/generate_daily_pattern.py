@@ -87,14 +87,33 @@ def generate_daily_pattern_graph(date1='2024-06-02', date2='2024-06-24', results
     ax1_left.legend(loc='upper left', fontsize=10)
     ax1_left.set_ylim(0, y1_max * 1.1)
 
-    # 右軸：SOC
+    # 右軸：SOC (bF_max を results ファイルやディレクトリ名から動的に決定)
+    try:
+        # 優先: データフレームに bF_max カラムがあればそれを使う
+        if 'bF_max' in df.columns:
+            bF_max = float(df['bF_max'].iloc[0])
+        else:
+            # 次に results_dir か png_dir のパスから socNNN を推定
+            for token in (results_dir, png_dir):
+                if isinstance(token, str) and 'soc' in token:
+                    import re
+                    m = re.search(r'soc(\d+)', token)
+                    if m:
+                        bF_max = float(m.group(1))
+                        break
+            else:
+                bF_max = 860.0
+    except Exception:
+        bF_max = 860.0
+
+    bF_half = bF_max * 0.5
     ax1_right = ax1_left.twinx()
     ax1_right.plot(df_day1['timestamp'], df_day1['bF'],
                    color='green', linewidth=2, linestyle='--', label='蓄電池SOC')
-    ax1_right.axhline(y=430, color='red', linestyle=':', linewidth=1, alpha=0.5, label='50%容量')
+    ax1_right.axhline(y=bF_half, color='red', linestyle=':', linewidth=1, alpha=0.5, label='50%容量')
     ax1_right.set_ylabel('蓄電池SOC [kWh]', fontsize=12)
     ax1_right.legend(loc='upper right', fontsize=10)
-    ax1_right.set_ylim(0, 800)
+    ax1_right.set_ylim(0, bF_max * 1.05)
 
     # 時刻軸のフォーマット
     ax1_left.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
@@ -120,14 +139,14 @@ def generate_daily_pattern_graph(date1='2024-06-02', date2='2024-06-24', results
     ax2_left.legend(loc='upper left', fontsize=10)
     ax2_left.set_ylim(0, y1_max * 1.1)
 
-    # 右軸：SOC
+    # 右軸：SOC（上と同じ bF_max を使う）
     ax2_right = ax2_left.twinx()
     ax2_right.plot(df_day2['timestamp'], df_day2['bF'],
                    color='green', linewidth=2, linestyle='--', label='蓄電池SOC')
-    ax2_right.axhline(y=430, color='red', linestyle=':', linewidth=1, alpha=0.5, label='50%容量')
+    ax2_right.axhline(y=bF_half, color='red', linestyle=':', linewidth=1, alpha=0.5, label='50%容量')
     ax2_right.set_ylabel('蓄電池SOC [kWh]', fontsize=12)
     ax2_right.legend(loc='upper right', fontsize=10)
-    ax2_right.set_ylim(0, 800)
+    ax2_right.set_ylim(0, bF_max * 1.05)
 
     # 時刻軸のフォーマット
     ax2_left.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))

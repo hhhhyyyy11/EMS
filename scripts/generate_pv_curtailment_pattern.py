@@ -132,10 +132,28 @@ def generate_pv_curtailment_pattern(target_date=None, results_dir='results', png
     ax2 = ax1.twinx()
     ax2.plot(df_day['timestamp'], df_day['bF'],
              color='green', linewidth=2.5, linestyle='--', label='蓄電池SOC')
-    ax2.axhline(y=430, color='red', linestyle=':', linewidth=1, alpha=0.5)
+
+    # bF_max を動的に決定（CSVに列があれば優先、それ以外はフォルダ名から推定）
+    try:
+        if 'bF_max' in df.columns:
+            bF_max = float(df['bF_max'].iloc[0])
+        else:
+            import re
+            bF_max = 860.0
+            for token in (results_dir,):
+                if isinstance(token, str) and 'soc' in token:
+                    m = re.search(r'soc(\d+)', token)
+                    if m:
+                        bF_max = float(m.group(1))
+                        break
+    except Exception:
+        bF_max = 860.0
+
+    # 50%ラインを描画（bF_max 使用）
+    ax2.axhline(y=bF_max * 0.5, color='red', linestyle=':', linewidth=1, alpha=0.5)
 
     ax2.set_ylabel('蓄電池SOC [kWh]', fontsize=12)
-    ax2.set_ylim(0, 860)
+    ax2.set_ylim(0, bF_max * 1.05)
     ax2.legend(loc='upper right', fontsize=10)
 
     # 時刻軸のフォーマット
@@ -164,7 +182,7 @@ def generate_pv_curtailment_pattern(target_date=None, results_dir='results', png
     print(f'SOC: 平均 {df_day["bF"].mean():.2f} kWh, 最大 {df_day["bF"].max():.2f} kWh, 最小 {df_day["bF"].min():.2f} kWh')
 
     # 満充電時間の計算
-    full_charge_hours = (df_day['bF'] >= 860).sum() * 0.5
+    full_charge_hours = (df_day['bF'] >= bF_max).sum() * 0.5
     print(f'満充電時間: {full_charge_hours:.1f} 時間 ({full_charge_hours/24*100:.1f}%)')
 
     plt.close()
