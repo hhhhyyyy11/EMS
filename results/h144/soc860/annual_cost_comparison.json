@@ -16,5 +16,18 @@
     "peak_demand_kW": 216.97816916607917,
     "annual_buy_kWh": 548013.6855138508
   },
-  "cheaper_plan": "hokkaido_basic"
+  "cheaper_plan": "hokkaido_basic",
+  "experiment_params": {
+    "horizon": 144,
+    "horizon_hours": 72.0,
+    "bF_max_kWh": 860.0,
+    "time_limit_per_step": 10.0,
+    "total_steps": 17520
+  },
+  "timing": {
+    "hokkaido_basic_seconds": 1844.5686180591583,
+    "market_linked_seconds": 1684.9012627601624,
+    "total_seconds": 3536.2860100269318,
+    "total_minutes": 58.93810016711553
+  }
 }
