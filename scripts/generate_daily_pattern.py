@@ -186,14 +186,21 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--soc', type=str, default=None, help='SOCサブフォルダ名（例: soc860）')
+    parser.add_argument('--horizon', type=int, default=96, help='予測期間（ステップ数）。96以外の場合はh{horizon}/サブフォルダを使用')
     args = parser.parse_args()
 
-    if args.soc:
-        results_dir = f'results/{args.soc}'
-        png_dir = f'png/{args.soc}'
+    # horizon=96 が基準、それ以外は h{horizon}/ サブフォルダを追加
+    if args.horizon == 96:
+        horizon_prefix = ''
     else:
-        results_dir = 'results'
-        png_dir = 'png'
+        horizon_prefix = f'h{args.horizon}/'
+
+    if args.soc:
+        results_dir = f'results/{horizon_prefix}{args.soc}'
+        png_dir = f'png/{horizon_prefix}{args.soc}'
+    else:
+        results_dir = f'results/{horizon_prefix}'.rstrip('/')
+        png_dir = f'png/{horizon_prefix}'.rstrip('/')
 
     generate_daily_pattern_graph('2024-06-02', '2024-06-24', results_dir=results_dir, png_dir=png_dir)
     print('\n完了しました!')

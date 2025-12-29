@@ -1036,10 +1036,18 @@ def main():
     df_res_hokkaido = run_rolling(df, horizon=args.horizon, control_horizon=1, time_limit=args.time_limit,
                                    max_steps=args.max_steps, params=params, price_data=None)
 
-    # 出力サブフォルダ名は常に bF_max の値に連動させる
+    # 出力サブフォルダ名は bF_max と horizon の値に連動させる
+    # horizon=96 が基準なので、それ以外の場合は h{horizon}/ サブフォルダを追加
     soc_label = f"soc{int(params['bF_max'])}"
-    results_dir = os.path.join('results', soc_label)
-    png_dir = os.path.join('png', soc_label)
+    if args.horizon == 96:
+        # 基準: results/soc{容量}/, png/soc{容量}/
+        results_dir = os.path.join('results', soc_label)
+        png_dir = os.path.join('png', soc_label)
+    else:
+        # 非基準: results/h{horizon}/soc{容量}/, png/h{horizon}/soc{容量}/
+        horizon_label = f"h{args.horizon}"
+        results_dir = os.path.join('results', horizon_label, soc_label)
+        png_dir = os.path.join('png', horizon_label, soc_label)
     os.makedirs(results_dir, exist_ok=True)
     os.makedirs(png_dir, exist_ok=True)
 
@@ -1089,7 +1097,7 @@ def main():
         import subprocess
         script_dir = os.path.dirname(os.path.abspath(__file__))
         annual_graph_script = os.path.join(script_dir, 'generate_annual_graph.py')
-        subprocess.run(['python3', annual_graph_script, '--soc', soc_label], check=True)
+        subprocess.run(['python3', annual_graph_script, '--soc', soc_label, '--horizon', str(args.horizon)], check=True)
         print('✓ 年間グラフ（PV発電・買電・需要、SOC推移）の生成が完了しました')
     except Exception as e:
         print(f'⚠ 年間グラフの生成に失敗しました: {e}')
@@ -1100,7 +1108,7 @@ def main():
         import subprocess
         script_dir = os.path.dirname(os.path.abspath(__file__))
         daily_pattern_script = os.path.join(script_dir, 'generate_daily_pattern.py')
-        subprocess.run(['python3', daily_pattern_script, '--soc', soc_label], check=True)
+        subprocess.run(['python3', daily_pattern_script, '--soc', soc_label, '--horizon', str(args.horizon)], check=True)
         print('✓ 日次パターングラフ（2024年5月15日）の生成が完了しました')
     except Exception as e:
         print(f'⚠ 日次パターングラフの生成に失敗しました: {e}')
@@ -1111,7 +1119,7 @@ def main():
         import subprocess
         script_dir = os.path.dirname(os.path.abspath(__file__))
         pv_curtailment_script = os.path.join(script_dir, 'generate_pv_curtailment_pattern.py')
-        subprocess.run(['python3', pv_curtailment_script, '--soc', soc_label], check=True)
+        subprocess.run(['python3', pv_curtailment_script, '--soc', soc_label, '--horizon', str(args.horizon)], check=True)
         print('✓ PV余剰パターングラフ（最大余剰日）の生成が完了しました')
     except Exception as e:
         print(f'⚠ PV余剰パターングラフの生成に失敗しました: {e}')

@@ -165,14 +165,21 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--soc', type=str, default=None, help='SOCサブフォルダ名（例: soc860）')
+    parser.add_argument('--horizon', type=int, default=96, help='予測期間（ステップ数）。96以外の場合はh{horizon}/サブフォルダを使用')
     args = parser.parse_args()
 
-    if args.soc:
-        results_dir = f'results/{args.soc}'
-        png_dir = f'png/{args.soc}'
+    # horizon=96 が基準、それ以外は h{horizon}/ サブフォルダを追加
+    if args.horizon == 96:
+        horizon_prefix = ''
     else:
-        results_dir = 'results'
-        png_dir = 'png'
+        horizon_prefix = f'h{args.horizon}/'
+
+    if args.soc:
+        results_dir = f'results/{horizon_prefix}{args.soc}'
+        png_dir = f'png/{horizon_prefix}{args.soc}'
+    else:
+        results_dir = f'results/{horizon_prefix}'.rstrip('/')
+        png_dir = f'png/{horizon_prefix}'.rstrip('/')
 
     # bF_max が環境やファイル名から決まる場合は引数で上書き可能
     bF_max = None
