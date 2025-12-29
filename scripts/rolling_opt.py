@@ -1028,13 +1028,21 @@ def main():
     # ========================================
     # 1️⃣ 北海道電力基本プランで最適化
     # ========================================
+    import time
+    total_start_time = time.time()
+    timing_info = {}
+
     print('\n' + '='*70)
     print('1️⃣  北海道電力基本プランで最適化実行中...')
     print('='*70)
     print('プラン: 北海道電力基本プラン (電力量料金+燃料費調整額+再エネ賦課金)')
 
+    hokkaido_start_time = time.time()
     df_res_hokkaido = run_rolling(df, horizon=args.horizon, control_horizon=1, time_limit=args.time_limit,
                                    max_steps=args.max_steps, params=params, price_data=None)
+    hokkaido_elapsed = time.time() - hokkaido_start_time
+    timing_info['hokkaido_basic_seconds'] = hokkaido_elapsed
+    print(f'✓ 北海道電力基本プラン完了: {hokkaido_elapsed:.1f}秒 ({hokkaido_elapsed/60:.1f}分)')
 
     # 出力サブフォルダ名は bF_max と horizon の値に連動させる
     # horizon=96 が基準なので、それ以外の場合は h{horizon}/ サブフォルダを追加
@@ -1067,8 +1075,12 @@ def main():
         print('='*70)
         print('プラン: 市場価格連動プラン (JEPX spot price data)')
 
+        market_start_time = time.time()
         df_res_market = run_rolling(df, horizon=args.horizon, control_horizon=1, time_limit=args.time_limit,
                                      max_steps=args.max_steps, params=params, price_data=price_data)
+        market_elapsed = time.time() - market_start_time
+        timing_info['market_linked_seconds'] = market_elapsed
+        print(f'✓ 市場価格連動プラン完了: {market_elapsed:.1f}秒 ({market_elapsed/60:.1f}分)')
 
         out_csv_market = os.path.join(results_dir, f'rolling_results_market_linked.csv')
         df_res_market.to_csv(out_csv_market)
@@ -1125,6 +1137,12 @@ def main():
         print(f'⚠ PV余剰パターングラフの生成に失敗しました: {e}')
         traceback.print_exc()
 
+    # 全体の計算時間を記録
+    total_elapsed = time.time() - total_start_time
+    timing_info['total_seconds'] = total_elapsed
+    timing_info['total_minutes'] = total_elapsed / 60
+    print(f'\n✓ 全体計算時間: {total_elapsed:.1f}秒 ({total_elapsed/60:.1f}分)')
+
     # 比較データの作成: 市場連動プランの結果が存在すれば両方を比較して出力
     if market_costs is not None:
         # 両プランの比較情報を作成
@@ -1139,6 +1157,16 @@ def main():
             'hokkaido_basic': hokkaido_costs,
             'message': 'Fixed price mode - only Hokkaido Basic plan calculated'
         }
+
+    # 実験パラメータと計算時間を追加
+    comparison_data['experiment_params'] = {
+        'horizon': args.horizon,
+        'horizon_hours': args.horizon * 0.5,
+        'bF_max_kWh': params['bF_max'],
+        'time_limit_per_step': args.time_limit,
+        'total_steps': len(df)
+    }
+    comparison_data['timing'] = timing_info
 
     # 年間料金比較データをJSONファイルに保存
     import json
