@@ -637,16 +637,12 @@ PV利用率 [\%] & 100.00 & 100.00 \\
 
 需要が低い場合，PV発電が豊富な日は買電を270 kWhに大幅に抑制できる一方，PV発電が少ない日は862 kWhの買電が必要となり，約3.2倍の差が生じる．需要が低い場合の方が，PV発電量の違いによる買電量の差がより顕著に現れることが確認できる．
 
-% TODO: グラフ生成後にコメントを解除する
-% \begin{figure}[H]
-% \centering
-% \includegraphics[width=\textwidth]{../png/soc860/daily_battery_pattern_low_demand.png}
-% \caption{需要が低い日の運用パターン（需要約1,290 kWh）．上：PV発電量が多い日（2024年2月5日，PV発電1,019 kWh），下：PV発電量が少ない日（2024年1月22日，PV発電281 kWh）．左軸：電力フロー（需要，PV発電，買電），右軸：蓄電池SOCの時間変化．}
-% \label{fig:battery_operation_low}
-% \end{figure}
-
-\noindent
-\textbf{注記}：需要が低い日のグラフは現在生成中である．
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{../png/soc860/daily_battery_pattern_low_demand.png}
+\caption{需要が低い日の運用パターン（需要約1,290 kWh）．上：PV発電量が多い日（2024年2月5日，PV発電1,019 kWh），下：PV発電量が少ない日（2024年1月22日，PV発電281 kWh）．左軸：電力フロー（需要，PV発電，買電），右軸：蓄電池SOCの時間変化．}
+\label{fig:battery_operation_low}
+\end{figure}
 
 \subsubsection{需要レベルによる運用特性の違い}
 
