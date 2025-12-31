@@ -57,219 +57,137 @@
 
 \section{最適化手法}
 
-\subsection{ローリング計画法の概要}
+本研究では，不確実性を伴う環境下での運用計画を立案するため，ローリング計画法（Rolling Horizon Approach）を用いた混合整数線形計画法（MILP: Mixed Integer Linear Programming）を採用する．
 
-本研究では，ローリング計画法を採用した．まず，時間軸 $t$ を 0.5 時間（30 分）ごとの等間隔グリッドで離散化し，各離散時刻を整数インデックス $k \in \mathbb{Z}$（$k=0,1,2,\dots$）で表す．「ステップ」はこの離散時刻の一単位を意味し，時刻 $k$ と時刻 $k+1$ の間隔が現実世界の 30 分に相当する．ここで，$\Delta t = 0.5$ 時間（30分）を時間刻み幅とする．
+\subsection{ローリング計画法の適用}
 
-各時刻区間 $[k\Delta t,(k+1)\Delta t)$ 内では，買電量や充放電電力などの\textbf{制御変数}が区間全体で一定であると仮定し，区間境界における値が最適化で決まる．ここで制御変数とは，システムを制御するために決定すべき変数を指し，本研究では以下が該当する：
-\begin{itemize}
-    \item \textbf{買電量} $s^{\mathrm{BY}}_{k}$：系統からどれだけ電力を購入するか
-    \item \textbf{充電電力} $x^{\mathrm{FC}}_{k}$：蓄電池にどれだけ充電するか
-    \item \textbf{放電電力} $x^{\mathrm{FD}}_{k}$：蓄電池からどれだけ放電するか
-\end{itemize}
-これらに対し，需要やPV発電量は外部環境によって決まるため制御できず，「外生変数」と呼ばれる．PV発電の余剰（不使用）は不等式制約により自動的に調整される．最適化の目的は，外生変数が与えられた状況で，制御変数を適切に決定して電気料金を最小化することである．
+時間軸を$\Delta t = 0.5$時間（30分）間隔で離散化し，各時刻をステップ$k \in \mathbb{Z}_{\geq 0}$で表現する．ローリング計画法では，現在時刻$k$から予測期間（ホライズン）$H$ステップ先までの最適化問題を解き，得られた解のうち直近の第1ステップ（時刻$k$の制御入力）のみを実行する．次ステップ$k+1$においては，最新のシステム状態（蓄電池SOC等）や気象予測情報に基づき，再び$H$ステップ先までの計画を更新する．
 
-\subsubsection{ローリング計画法の基本概念}
+本手法の採用により，年間を通した大域的な最適化（全17,520ステップ）に伴う計算負荷を実用的な範囲に低減すると同時に，予測誤差の影響を最小限に抑えたフィードバック制御的な運用が可能となる．本研究では，予測期間を$H=96$（48時間）に設定した．
 
-ローリング計画法では，固定長の予測期間（ホライズン）を時間経過とともに前方に「転がして（rolling）」いく．1年間全体（17,520ステップ）を一度に最適化するのではなく，以下のように分割して実行する：
-
-\begin{itemize}
-    \item \textbf{第1回最適化}：時刻0から時刻95まで（96ステップ = 48時間）を最適化 → 時刻0の制御入力のみ実行
-    \item \textbf{第2回最適化}：時刻1から時刻96まで（96ステップ = 48時間）を最適化 → 時刻1の制御入力のみ実行
-    \item \textbf{第3回最適化}：時刻2から時刻97まで（96ステップ = 48時間）を最適化 → 時刻2の制御入力のみ実行
-    \item $\vdots$
-    \item \textbf{第17,520回最適化}：時刻17,519から時刻17,614まで（96ステップ）を最適化 → 時刻17,519の制御入力のみ実行
-\end{itemize}
-
-このように，予測期間を1ステップずつ前進させながら最適化を繰り返す．
-
-\subsubsection{ローリング計画法の利点}
-
-\begin{enumerate}
-    \item \textbf{計算負荷の軽減}：17,520ステップ全体を一度に最適化する場合，変数数が膨大となり計算が困難である．96ステップごとの最適化に分割することで，各最適化問題のサイズを実用的な範囲に抑えられる．
-
-    \item \textbf{最新情報の反映}：各時刻で最新のシステム状態（蓄電池SOC，気象予報など）を反映できる．実運用では予測誤差が生じるため，定期的に最適化を再計算することで精度が向上する．
-
-    \item \textbf{不確実性への対応}：将来の需要やPV発電は完全には予測できないため，予測期間を限定（48時間先まで）し，新しい情報が得られるたびに計画を更新する方が現実的である．
-\end{enumerate}
-
-\subsubsection{ローリング計画法の実行手順}
-
-ローリング計画法は以下の手順で実行される：
-
-\begin{enumerate}
-    \item 現在時刻 $k$ から将来 $k+H-1$ までの $H$ ステップ（計 $H\Delta t$ 時間）の予測期間を設定
-    \item 予測期間内のすべての制御変数列を含む最適化問題を解く
-    \item 解から得られた最初の1ステップ分（区間 $[k\Delta t, (k+1)\Delta t)$ に対応）の制御変数のみを実行
-    \item 時刻インデックスを $k \leftarrow k+1$ と更新し，上記を繰り返す
-\end{enumerate}
-
-ここで，各制御変数（買電量 $s^{\mathrm{BY}}_{k}$，充放電電力 $x^{\mathrm{FC}}_{k},x^{\mathrm{FD}}_{k}$ など）は区間 $[k\Delta t,(k+1)\Delta t)$ 内で一定と仮定する．本研究では，$H = 96$（48時間先）の予測期間を設定し，30分間隔で最適化を実行した．これにより，年間17,520回の最適化を実行し，各時刻で48時間先までの予測情報を活用した最適な運用計画を実現した．
-
-\subsection{定式化}
+\subsection{数理モデルの定式化}
 
 \subsubsection{決定変数}
 
-最適化において決定すべき変数（決定変数）を以下に示す：
+最適化問題における主な決定変数を以下に定義する．連続変数は非負とし，添字$k$は時刻ステップを表す．
 
-\textbf{連続変数：}
 \begin{itemize}
-    \item $s^{\mathrm{BY}}_{k}$:買電量 [kW]
-    \item $s^{\mathrm{SL}}_{k}$:売電量 [kW]
-    \item $s^{\mathrm{BY}}_{\mathrm{MAX}}$:契約電力(予測期間内の最大買電量)[kW]
-    \item $b^{\mathrm{F}}_{k}$:蓄電池SOC [kWh]
-    \item $x^{\mathrm{FC1}}_{k}$:充電電力（変換前）[kW]
-    \item $x^{\mathrm{FC2}}_{k}$:充電電力（変換後）[kW]
-    \item $x^{\mathrm{FD1}}_{k}$:放電電力（変換前）[kW]
-    \item $x^{\mathrm{FD2}}_{k}$:放電電力（変換後）[kW]
-    \item $g^{\mathrm{P1}}_{k}$:PV発電可能量（入力データ）[kW]
-    \item $g^{\mathrm{P2}}_{k}$:実際に使用するPV発電量 [kW]
-    \item $d^{\mathrm{A1}}_{k}$:需要電力（変換前）[kW]
-    \item $d^{\mathrm{A2}}_{k}$:需要電力（変換後，入力データ）[kW]
+    \item $s^{\mathrm{BY}}_{k}$：買電電力 [kW]
+    \item $s^{\mathrm{BY}}_{\mathrm{MAX}}$：予測期間内の最大買電電力（契約電力相当値）[kW]
+    \item $x^{\mathrm{FC1}}_{k}, x^{\mathrm{FD1}}_{k}$：蓄電池への充電電力および放電電力（変換前）[kW]
+    \item $x^{\mathrm{FC2}}_{k}, x^{\mathrm{FD2}}_{k}$：充電電力および放電電力（変換後）[kW]
+    \item $b^{\mathrm{F}}_{k}$：蓄電池の蓄電残量（SOC）[kWh]
+    \item $z_{k}$：充放電状態を表す二値変数（1：充電モード，0：放電モード）
+    \item $g^{\mathrm{P2}}_{k}$：実際に使用するPV発電量 [kW]
+    \item $d^{\mathrm{A1}}_{k}$：モデル内需要電力 [kW]
 \end{itemize}
 
-\textbf{二値変数（0または1）：}
-\begin{itemize}
-    \item $z_{k}$:充放電の選択（1=充電可能，0=放電可能）
-\end{itemize}
+既知パラメータとして，太陽光発電（PV）の発電可能量$g^{\mathrm{P1}}_{k}$および観測需要$d^{\mathrm{A2}}_{k}$を与える．出力抑制（カーテイルメント）を許容し，$g^{\mathrm{P2}}_{k} \leq g^{\mathrm{P1}}_{k}$とする．需要に関しては，観測値$d^{\mathrm{A2}}_{k}$と変換効率$\alpha_{\mathrm{DA}} = 0.98$の関係から$d^{\mathrm{A2}}_{k} = \alpha_{\mathrm{DA}} \cdot d^{\mathrm{A1}}_{k}$が成り立つ．
 
 \subsubsection{目的関数}
 
-予測期間内の電気料金の総和を最小化する．電気料金は基本料金（契約電力に依存）とエネルギー料金（使用電力量に依存）から構成される：
+目的関数は，予測期間$H$における電気料金（基本料金相当額および電力量料金）の総和とし，これを最小化する．
 
 \begin{equation}
-\text{Minimize} \quad w_{\mathrm{basic}} \cdot s^{\mathrm{BY}}_{\mathrm{MAX}} + \sum_{k=0}^{H-1} p^{\mathrm{BY}}_{k} \cdot s^{\mathrm{BY}}_{k} \cdot 0.5
+\text{Minimize} \quad J = w_{\mathrm{basic}} \cdot s^{\mathrm{BY}}_{\mathrm{MAX}} + \sum_{k=0}^{H-1} p^{\mathrm{BY}}_{k} \cdot s^{\mathrm{BY}}_{k} \cdot \Delta t
 \label{eq:objective}
 \end{equation}
 
-ここで，
-\begin{itemize}
-    \item $s^{\mathrm{BY}}_{k}$:時刻$k$における買電量 [kW]
-    \item $s^{\mathrm{BY}}_{\mathrm{MAX}}$:予測期間内の最大買電量(契約電力)[kW]
-    \item $w_{\mathrm{basic}}$:基本料金係数（後述） [円/kW]
-    \item $p^{\mathrm{BY}}_{k}$:時刻$k$における買電電力量価格 [円/kWh]
-    \item $0.5$: 30分間隔から時間単位への換算係数[h]
-    \item $H$:予測ステップ数(本研究では96ステップ)
-\end{itemize}
+ここで，$p^{\mathrm{BY}}_{k}$は時刻$k$における電力量単価 [円/kWh]，$w_{\mathrm{basic}}$は基本料金に関する重み係数 [円/kW]である．
 
-基本料金係数$w_{\mathrm{basic}}$は，年間の基本料金を予測期間の長さに応じて按分したものであり，以下のように計算される．
+基本料金は本来，年間の最大需要電力に基づいて決定されるが，本手法では予測期間が限定的であるため，年間の基本料金単価を時間按分した値をペナルティ項として導入した．重み係数$w_{\mathrm{basic}}$は式(\ref{eq:weight_basic})により算出される．
+
 \begin{equation}
-    w_{\mathrm{basic}} = 2829.60 \times 0.85 \times 12 \times \frac{H \times 0.5}{24 \times 365}
-    \label{eq:weight_basic}
+w_{\mathrm{basic}} = C_{\mathrm{cap}} \times \frac{H \cdot \Delta t}{8760}
+\label{eq:weight_basic}
 \end{equation}
-この式は，年間の基本料金単価（2829.60円/kW・月 $\times$ 力率割引0.85 $\times$ 12ヶ月）を、1年間の総時間（$24 \times 365$[h]）で割り，それに予測期間（$H \times 0.5[h] = 48[h]$）を掛けることで，予測期間あたりの基本料金の重みを算出している．これにより，予測期間内のピーク電力 $s^{\mathrm{BY}}_{\mathrm{MAX}}$ が年間契約電力に与える影響を近似的に評価するための係数として機能する．
+
+ただし，$C_{\mathrm{cap}}$は年間基本料金単価（$2829.60 \times 0.85 \times 12$円/kW）である．この項の導入により，各予測期間におけるピーク電力の抑制を図り，間接的に年間契約電力の低減を指向する．
 
 \noindent
-\textbf{基本料金係数の設定根拠}：本研究では，市場価格連動プランにおいても基本料金は北海道電力と同じと仮定する（本研究の前提条件）．したがって，$w_{\mathrm{basic}}$の値は北海道電力の実際の料金体系（2,829.60円/kW・月）に基づいており，両プランで同一の係数を使用している．
-
-最適化の予測期間が1年未満であるため，この係数はあくまで将来のピーク電力を抑制するための近似的な指標である．年間の基本料金は，シミュレーション完了後に，実際に記録された年間最大需要電力に基づいて別途計算される．
-
-\noindent
-\textbf{按分手法の数理的限界}：本来，契約電力（基本料金の決定要因）は「年間17,520ステップの中の最大値」という\textbf{大域的な指標}で決まる．一方，本手法では各予測期間（48時間，96ステップ）内の最大値$s^{\mathrm{BY}}_{\mathrm{MAX}}$に按分係数を乗じてペナルティを与えており，これは「局所的な最大値の抑制」を通じて「大域的な最大値」を間接的に制御する近似である．
-
-この近似には以下の限界がある：
-\begin{itemize}
-    \item ある予測期間でピークを抑制しても，別の期間で大きなピークが発生すれば，その抑制努力は年間契約電力に反映されない
-    \item 逆に，ある予測期間でピークを許容しても，それが年間最大値とならなければ基本料金には影響しない
-    \item 按分係数$w_{\mathrm{basic}}$の値によって，ソルバーの「ピーク抑制」と「電力量料金削減」のトレードオフ判断が変化する可能性がある
-\end{itemize}
-
-\noindent
-特に市場価格連動プランでは，価格が安い時間帯に買電を集中させるインセンティブがあるため，この近似の影響が顕在化しやすい．本手法の限界と結果への影響については，考察（\ref{sec:wbasic_limitation}節）で詳細に分析する．
+\textbf{注}：本手法は「局所的な最大値の抑制」を通じて「大域的な最大値（年間契約電力）」を間接的に制御する近似であり，その限界については考察（\ref{sec:wbasic_limitation}節）で詳述する．
 
 \subsubsection{制約条件}
 
-\textbf{(1) 電力収支制約}
+システムの物理的特性および運用上の要請に基づき，以下の制約条件を課す．
+
+\noindent
+\textbf{(1) 電力需給バランス制約}
+
+各時刻において，供給と需要は一致しなければならない．
 \begin{equation}
-g^{\mathrm{P2}}_{k} + s^{\mathrm{BY}}_{k} - s^{\mathrm{SL}}_{k} - x^{\mathrm{FC1}}_{k} + x^{\mathrm{FD2}}_{k} - d^{\mathrm{A1}}_{k} = 0, \quad \forall k \in \{0,1,2,\dots,H-1\}
+g^{\mathrm{P2}}_{k} + s^{\mathrm{BY}}_{k} + x^{\mathrm{FD2}}_{k} = d^{\mathrm{A1}}_{k} + x^{\mathrm{FC1}}_{k}, \quad \forall k
+\label{eq:balance}
 \end{equation}
 
-\textbf{(2) PV利用可能制約}
-\begin{equation}
-g^{\mathrm{P2}}_{k} \leq g^{\mathrm{P1}}_{k}, \quad \forall k \in \{0,1,2,\dots,H-1\}
-\end{equation}
-
-ここで，$g^{\mathrm{P1}}_{k}$は気象データから得られるPV発電可能量[kW]，$g^{\mathrm{P2}}_{k}$は実際に使用するPV発電量[kW]である．不等式制約とすることで，必要に応じてPV発電を使用しない柔軟性を持たせている．
-
-\textbf{(3) 需要変換効率}
-\begin{equation}
-d^{\mathrm{A2}}_{k} = \alpha_{\mathrm{DA}} \cdot d^{\mathrm{A1}}_{k}, \quad \forall k \in \{0,1,2,\dots,H-1\}
-\end{equation}
-
-ここで，$\alpha_{\mathrm{DA}} = 0.98$である．
-
-\textbf{(4) 充電プロセス}
-\begin{equation}
-x^{\mathrm{FC2}}_{k} = \alpha_{\mathrm{FC}} \cdot x^{\mathrm{FC1}}_{k}, \quad \forall k \in \{0,1,2,\dots,H-1\}
-\end{equation}
-
-\textbf{(5) 放電プロセス}
-\begin{equation}
-x^{\mathrm{FD2}}_{k} = \alpha_{\mathrm{FD}} \cdot x^{\mathrm{FD1}}_{k}, \quad \forall k \in \{0,1,2,\dots,H-1\}
-\end{equation}
-
-ここで，$\alpha_{\mathrm{FC}} = \alpha_{\mathrm{FD}} = 0.98$（仮定値）である．
-
-\textbf{(6) SOC更新式}
-
-初期SOCは以下で与えられる：
-\begin{equation}
-b^{\mathrm{F}}_{0} = b_{\mathrm{F}}^{\mathrm{init}} + x^{\mathrm{FC2}}_{0} \cdot 0.5 - x^{\mathrm{FD1}}_{0} \cdot 0.5
-\end{equation}
-
-ここで，$b_{\mathrm{F}}^{\mathrm{init}}$は最適化開始時（第0ステップの充放電前）のSOC初期値[kWh]である．
-
-$k \geq 1$のステップでは，以下の更新式に従う：
-\begin{equation}
-b^{\mathrm{F}}_{k} = b^{\mathrm{F}}_{k-1} + x^{\mathrm{FC2}}_{k} \cdot 0.5 - x^{\mathrm{FD1}}_{k} \cdot 0.5, \quad \forall k \in \{1,2,\dots,H-1\}
-\end{equation}
-
-ここで，係数$0.5$は時間間隔0.5時間（30分）を表す．充放電電力[kW]に時間[h]を乗じることで，エネルギー変化量[kWh]が得られる．自己放電は無視する．
-
-\textbf{(7) SOC範囲制約}
-\begin{equation}
-0.05\times b^{\max}_{\mathrm{F}} \leq b^{\mathrm{F}}_{k} \leq 0.95\times b^{\max}_{\mathrm{F}}, \quad \forall k \in \{0,1,2,\dots,H-1\}
-\end{equation}
-
-蓄電池全容量を $b^{\max}_{\mathrm{F}}=860\ \mathrm{kWh}$ としているため，上式は数値的に
-\begin{equation*}
-    43\ \mathrm{kWh} \leq b^{\mathrm{F}}_{k} \leq 817\ \mathrm{kWh}
-\end{equation*}
-と表現できる．
-
-\textbf{(8) 充放電電力制約}
-
-充放電電力の上限制約を以下のように設定する：
+充放電電力は変換効率$\eta = 0.98$を介して以下の関係にある．
 \begin{align}
-0 &\leq x^{\mathrm{FC2}}_{k} \leq 400, \quad \forall k \in \{0,1,2,\dots,H-1\} \\
-0 &\leq x^{\mathrm{FD1}}_{k} \leq 400, \quad \forall k \in \{0,1,2,\dots,H-1\}
+x^{\mathrm{FC2}}_{k} &= \eta \cdot x^{\mathrm{FC1}}_{k} \label{eq:fc_eff} \\
+x^{\mathrm{FD2}}_{k} &= \eta \cdot x^{\mathrm{FD1}}_{k} \label{eq:fd_eff}
 \end{align}
 
-ここで，400kWは蓄電池の最大充放電出力である．変換前の充電電力$x^{\mathrm{FC1}}_{k}$と変換後の放電電力$x^{\mathrm{FD2}}_{k}$は，変換効率の制約(4)(5)により間接的に制限される．
+ここで，$x^{\mathrm{FC1}}_{k}$は系統側から見た充電電力，$x^{\mathrm{FC2}}_{k}$は蓄電池に実際に蓄積される電力を表す．放電についても同様に，$x^{\mathrm{FD1}}_{k}$は蓄電池から取り出す電力，$x^{\mathrm{FD2}}_{k}$は系統側で利用可能な電力である．なお，本システムでは逆潮流を禁止（売電量ゼロ）とする．
 
-\textbf{(9) 非同時充放電制約}
+\noindent
+\textbf{(2) 蓄電池状態遷移および容量制約}
 
-同一時刻に充電と放電を同時に行わないことを保証するため，二値変数$z_{k} \in \{0, 1\}$を導入し，以下の制約を設ける：
+蓄電池のSOC推移は次式で記述される．
+\begin{equation}
+b^{\mathrm{F}}_{k+1} = b^{\mathrm{F}}_{k} + (x^{\mathrm{FC2}}_{k} - x^{\mathrm{FD1}}_{k}) \cdot \Delta t
+\label{eq:soc_update}
+\end{equation}
+
+また，過充電・過放電防止のため，運用範囲を定格容量$C_{\mathrm{bat}}$の5\%〜95\%に制限する．
+\begin{equation}
+0.05 \cdot C_{\mathrm{bat}} \leq b^{\mathrm{F}}_{k} \leq 0.95 \cdot C_{\mathrm{bat}}, \quad \forall k
+\label{eq:soc_limit}
+\end{equation}
+
+\noindent
+\textbf{(3) 充放電排他および出力制約}
+
+充電と放電の同時実行を物理的に排除するため，二値変数$z_{k}$を用いた以下の制約（Big-M法）を設ける．
 \begin{align}
-x^{\mathrm{FC1}}_{k} &\leq M \cdot z_{k}, \quad \forall k \in \{0,1,2,\dots,H-1\} \\
-x^{\mathrm{FD1}}_{k} &\leq M \cdot (1 - z_{k}), \quad \forall k \in \{0,1,2,\dots,H-1\}
+x^{\mathrm{FC1}}_{k} &\leq M \cdot z_{k}, \quad \forall k \label{eq:bigm_fc} \\
+x^{\mathrm{FD1}}_{k} &\leq M \cdot (1 - z_{k}), \quad \forall k \label{eq:bigm_fd}
 \end{align}
 
-ここで，$M$は十分大きな定数（本実装では$M = 10^6$）である．$z_{k} = 1$のときは充電のみ可能，$z_{k} = 0$のときは放電のみ可能となる．
+ここで，$M$は十分大きな定数（$M = 10^6$）である．また，充放電出力の上限として以下を課す．
+\begin{align}
+x^{\mathrm{FC2}}_{k} &\leq P^{\mathrm{FC}}_{\mathrm{max}}, \quad \forall k \label{eq:fc_limit} \\
+x^{\mathrm{FD1}}_{k} &\leq P^{\mathrm{FD}}_{\mathrm{max}}, \quad \forall k \label{eq:fd_limit}
+\end{align}
 
-\textbf{(10) 売電禁止制約}
+本研究では$P^{\mathrm{FC}}_{\mathrm{max}} = P^{\mathrm{FD}}_{\mathrm{max}} = 400$\,kWとした．
 
-売電を禁止するため，売電量を0とする：
+\noindent
+\textbf{(4) PV出力制約}
+
+実際に使用するPV発電量は発電可能量を超えない．
 \begin{equation}
-s^{\mathrm{SL}}_{k} = 0, \quad \forall k \in \{0,1,2,\dots,H-1\}
+g^{\mathrm{P2}}_{k} \leq g^{\mathrm{P1}}_{k}, \quad \forall k
+\label{eq:pv_limit}
 \end{equation}
 
-\textbf{(11) 契約電力制約}
+\noindent
+\textbf{(5) 契約電力制約}
+
+予測期間内のすべての時刻において，買電電力は$s^{\mathrm{BY}}_{\mathrm{MAX}}$以下でなければならない．
 \begin{equation}
-s^{\mathrm{BY}}_{k} \leq s^{\mathrm{BY}}_{\mathrm{MAX}}, \quad \forall k \in \{0,1,2,\dots,H-1\}
+s^{\mathrm{BY}}_{k} \leq s^{\mathrm{BY}}_{\mathrm{MAX}}, \quad \forall k
+\label{eq:contract}
 \end{equation}
 
-この制約により，予測期間内の全ての買電量が契約電力$s^{\mathrm{BY}}_{\mathrm{MAX}}$以下となることを保証する．さらに，目的関数において$s^{\mathrm{BY}}_{\mathrm{MAX}}$に基本料金係数$w_{\mathrm{basic}}$が乗じられているため，最適化では$s^{\mathrm{BY}}_{\mathrm{MAX}}$を最小化しようとする．その結果，$s^{\mathrm{BY}}_{\mathrm{MAX}} = \max_{k \in \{0,1,\dots,H-1\}} s^{\mathrm{BY}}_{k}$（予測期間内の最大買電量）が自動的に成立する．
+\subsection{料金モデル}
+
+比較検討のため，以下の2種類の料金体系を適用する．
+
+\begin{itemize}
+    \item \textbf{北海道電力基本プラン（固定料金）}：電力量単価$p^{\mathrm{BY}}_{k}$を固定値（21.51円/kWh＋再エネ賦課金等）とする．
+    \item \textbf{市場価格連動プラン}：$p^{\mathrm{BY}}_{k}$にJEPXエリアプライス（30分値）を適用する．
+\end{itemize}
+
+いずれのプランにおいても，基本料金部分の計算には同一の重み係数$w_{\mathrm{basic}}$を適用し，ピーク電力抑制のインセンティブを等価に評価する設定とした．
 
 \subsection{料金体系}
 
