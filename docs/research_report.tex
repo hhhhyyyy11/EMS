@@ -263,44 +263,33 @@ C_{\mathrm{energy}} = E_{\mathrm{month}} \times (P_{\mathrm{JEPX}}(t) + 3.98) \q
 
 \section{実験設定}
 
-\subsection{データ}
+\subsection{使用データ}
+
+本シミュレーションでは，以下の実測データおよび市場価格データを使用した．
 
 \begin{itemize}
-    \item \textbf{期間}：2024年1月1日 ～ 12月31日(2月29日を除く365日)
-    \item \textbf{時間間隔}：30分
-    \item \textbf{消費電力データ}：20250901サンプルデータ.xlsx(「30分値」シートから取得,単位はkWh/30分)
-    \item \textbf{PV発電データ}：20250901サンプルデータ.xlsx(「30分値」シートから取得,単位はkWh/30分)
-    \item \textbf{JEPX価格データ}：一般社団法人日本卸電力取引所公開データ(2024年1月～12月のスポット価格,単位は円/kWh)(https://www.jepx.jp/electricpower/market-data/spot/より取得)
-    \item \textbf{注記}：2024年は閏年であるが,使用データは2月29日を含まない365日分である
+    \item \textbf{対象期間}：2024年1月1日から同年12月31日までの365日間．2024年は閏年であるが，データの整合性を考慮し2月29日を除外した全17,520ステップ（30分時間分解能）を解析対象とした．
+    \item \textbf{電力需要およびPV発電量}：北海道十勝地方の対象施設における実測値（30分積算値）を使用した．
+    \item \textbf{電力市場価格}：一般社団法人日本卸電力取引所（JEPX）が公開する北海道エリアのスポット市場価格（30分値）を採用した．
 \end{itemize}
 
-\subsubsection{データ前処理}
+\subsection{データ前処理}
 
-Excelファイルから読み込んだデータは，最適化計算の前に以下の単位変換を実施する：
+取得データは30分間の積算電力量$E_{30\mathrm{min}}$\,[kWh]であるため，最適化計算の入力とするにあたり，以下の関係式を用いて平均電力$P_{\mathrm{avg}}$\,[kW]に換算した．
+\begin{equation}
+P_{\mathrm{avg}} = \frac{E_{30\mathrm{min}}}{0.5}
+\label{eq:power_conversion}
+\end{equation}
 
-\begin{itemize}
-    \item \textbf{入力データ}：30分積算電力量 [kWh/30分]
-    \item \textbf{変換後データ}：平均電力 [kW]
-    \item \textbf{変換式}：$P_{\mathrm{avg}}[\mathrm{kW}] = E_{30\mathrm{min}}[\mathrm{kWh}] \div 0.5[\mathrm{h}]$
-\end{itemize}
+なお，目的関数における電気料金の算出に際しては，決定変数（電力\,[kW]）に時間刻み$\Delta t = 0.5$\,[h]を乗じることで，再び電力量\,[kWh]ベースに換算して評価を行っている．
 
-この変換により，30分間の電力量から1時間あたりの平均電力値が得られる．最適化では全て電力[kW]を基準とし，目的関数において電力量[kWh]への換算（$\times 0.5$時間）を行う．
+\subsection{計算環境と実装}
 
-\subsection{計算環境}
-
-\begin{itemize}
-    \item \textbf{プログラミング言語}：Python 3.x
-    \item \textbf{最適化ソルバー}：PySCIPOpt
-    \item \textbf{データ処理}：pandas, numpy
-    \item \textbf{可視化}：matplotlib
-\end{itemize}
+アルゴリズムの実装にはPython 3.xを使用し，混合整数計画問題（MILP）のソルバーにはSCIPのPythonインターフェースであるPySCIPOptを採用した．数値計算およびデータ処理にはpandas，numpyライブラリを，結果の可視化にはmatplotlibをそれぞれ用いた．
 
 \subsection{最適化パラメータ}
 
-\begin{itemize}
-    \item \textbf{予測期間}：$H = 96$ ステップ（48時間先まで予測）
-    \item \textbf{制御周期}：1ステップ（30分ごとに最適化を実行）
-\end{itemize}
+ローリング計画法における予測ホライズン$H$は96ステップ（48時間先）に設定し，1ステップ（30分）ごとのスライディングウィンドウ方式にて最適化計算を実行した．
 
 \section{結果}
 
