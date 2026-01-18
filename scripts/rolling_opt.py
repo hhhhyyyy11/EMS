@@ -1238,14 +1238,16 @@ def main():
         timing_info['hokkaido_basic_seconds'] = hokkaido_elapsed
         print(f'✓ 北海道電力基本プラン完了: {hokkaido_elapsed:.1f}秒 ({hokkaido_elapsed/60:.1f}分)')
 
-        # 出力サブフォルダ名は bF_max と horizon の値に連動させる
-        if args.horizon == 96:
+        # 出力サブフォルダ名は bF_max, horizon, control_horizon の値に連動させる
+        if args.horizon == 96 and args.control_horizon == 1:
+            # デフォルト設定の場合はsocフォルダ直下
             results_dir = os.path.join('results', soc_label)
             png_dir = os.path.join('png', soc_label)
         else:
-            horizon_label = f"h{args.horizon}"
-            results_dir = os.path.join('results', horizon_label, soc_label)
-            png_dir = os.path.join('png', horizon_label, soc_label)
+            # horizon または control_horizon がデフォルトと異なる場合はサブフォルダに
+            param_label = f"h{args.horizon}_c{args.control_horizon}"
+            results_dir = os.path.join('results', param_label, soc_label)
+            png_dir = os.path.join('png', param_label, soc_label)
         os.makedirs(results_dir, exist_ok=True)
         os.makedirs(png_dir, exist_ok=True)
 
