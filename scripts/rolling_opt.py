@@ -514,7 +514,7 @@ def run_rolling(df, horizon=96, control_horizon=1, time_limit: float = 60.0, max
     except Exception:
         bF0 = float(params['bF_max'] * 0.5)
 
-    for t in range(0, min(N, max_steps)):
+    for t in range(0, min(N, max_steps), control_horizon):
         H = min(horizon, N - t)
         demand_segment = demand_kW_all[t:t + H]
         pv_segment = pv_kW_all[t:t + H]
@@ -536,42 +536,45 @@ def run_rolling(df, horizon=96, control_horizon=1, time_limit: float = 60.0, max
             traceback.print_exc()
             # abort rolling on exception
             break
-        # apply first step decisions
-        sBY0 = res['sBY'][0]
-        sSL0 = res['sSL'][0]
-        xFC10 = res['xFC1'][0]
-        xFD10 = res['xFD1'][0]
-        bF_after = res['bF'][0]
-        pv_used0 = res.get('gP2', [0.0])[0]
-        pv_surplus0 = max(0.0, pv_kW_all[t] - pv_used0)
 
-        timestamp = df.index[t]
-        current_price = price_kW_all[t] if price_data is not None else params['buy_price']
+        # apply control_horizon steps of decisions
+        steps_to_apply = min(control_horizon, len(res['sBY']))
+        for k in range(steps_to_apply):
+            if t + k >= min(N, max_steps):
+                break
+            sBY_k = res['sBY'][k]
+            sSL_k = res['sSL'][k]
+            xFC1_k = res['xFC1'][k]
+            xFD1_k = res['xFD1'][k]
+            bF_k = res['bF'][k]
+            pv_used_k = res.get('gP2', [0.0] * (k+1))[k] if k < len(res.get('gP2', [])) else 0.0
+            pv_surplus_k = max(0.0, pv_kW_all[t + k] - pv_used_k)
 
-        # 予測期間内での契約電力(sBYMAX)を記録
-        sBYMAX_horizon = res.get('sBYMAX', max(res['sBY']) if 'sBY' in res else 0.0)
+            timestamp = df.index[t + k]
+            current_price = price_kW_all[t + k] if price_data is not None else params['buy_price']
 
-        results_rows.append({
-            'timestamp': timestamp,
-            'consumption_kW': consumption_kW_all[t],
-            'pv_kW': pv_kW_all[t],
-            'demand_kW': demand_kW_all[t],
-            'sBY': sBY0,
-            'sSL': sSL0,
-            'pv_used_kW': pv_used0,
-            'pv_surplus_kW': pv_surplus0,
-            'xFC1': xFC10,
-            'xFD1': xFD10,
-            'bF': bF_after,
-            'price_yen_per_kWh': current_price,
-            'sBYMAX_horizon': sBYMAX_horizon,  # 予測期間内の契約電力
-            'status': str(status)
-        })
+            # 予測期間内での契約電力(sBYMAX)を記録
+            sBYMAX_horizon = res.get('sBYMAX', max(res['sBY']) if 'sBY' in res else 0.0)
 
-        # update initial SOC for next iteration
-        bF0 = bF_after
-        # move forward by control_horizon steps
-        # here loop increments by 1, so we just continue
+            results_rows.append({
+                'timestamp': timestamp,
+                'consumption_kW': consumption_kW_all[t + k],
+                'pv_kW': pv_kW_all[t + k],
+                'demand_kW': demand_kW_all[t + k],
+                'sBY': sBY_k,
+                'sSL': sSL_k,
+                'pv_used_kW': pv_used_k,
+                'pv_surplus_kW': pv_surplus_k,
+                'xFC1': xFC1_k,
+                'xFD1': xFD1_k,
+                'bF': bF_k,
+                'price_yen_per_kWh': current_price,
+                'sBYMAX_horizon': sBYMAX_horizon,  # 予測期間内の契約電力
+                'status': str(status)
+            })
+
+        # update initial SOC for next iteration (use last applied step's SOC)
+        bF0 = res['bF'][steps_to_apply - 1]
 
     print(f'\nCompleted: {len(results_rows)} steps processed out of {min(N, max_steps)} requested')
 
@@ -1063,6 +1066,7 @@ def main():
     parser.add_argument('--sheet', default='30分値')
     parser.add_argument('--bF_max', type=float, default=None, help='蓄電池全容量 [kWh]（例: 860） - 指定すると params["bF_max"] を上書き')
     parser.add_argument('--horizon', type=int, default=96)  # 48時間先まで予測（96ステップ）
+    parser.add_argument('--control_horizon', type=int, default=1, help='制御ホライズン [ステップ] - 何ステップごとに計画を更新するか（1=30分ごと、4=2時間ごと）')
     parser.add_argument('--time_limit', type=float, default=10.0)
     parser.add_argument('--max_steps', type=int, default=None)
     parser.add_argument('--price_data', default='data/spot_summary_2024.csv', help='JEPX spot price data file (2024年度)')
@@ -1228,7 +1232,7 @@ def main():
         print('プラン: 北海道電力基本プラン (電力量料金+燃料費調整額+再エネ賦課金)')
 
         hokkaido_start_time = time.time()
-        df_res_hokkaido = run_rolling(df, horizon=args.horizon, control_horizon=1, time_limit=args.time_limit,
+        df_res_hokkaido = run_rolling(df, horizon=args.horizon, control_horizon=args.control_horizon, time_limit=args.time_limit,
                                        max_steps=args.max_steps, params=params, price_data=None)
         hokkaido_elapsed = time.time() - hokkaido_start_time
         timing_info['hokkaido_basic_seconds'] = hokkaido_elapsed
@@ -1261,7 +1265,7 @@ def main():
             print('プラン: 市場価格連動プラン (JEPX spot price data)')
 
             market_start_time = time.time()
-            df_res_market = run_rolling(df, horizon=args.horizon, control_horizon=1, time_limit=args.time_limit,
+            df_res_market = run_rolling(df, horizon=args.horizon, control_horizon=args.control_horizon, time_limit=args.time_limit,
                                          max_steps=args.max_steps, params=params, price_data=price_data)
             market_elapsed = time.time() - market_start_time
             timing_info['market_linked_seconds'] = market_elapsed
