@@ -1,20 +1,33 @@
 {
   "hokkaido_basic": {
-    "basic_charge": 5841158.961737505,
-    "energy_charge": 12195158.47549674,
-    "fuel_adjustment": -4308474.723838447,
-    "renewable_levy": 2256472.83740014,
-    "total": 15984315.550795939,
-    "peak_demand_kW": 202.38289627777723,
-    "annual_buy_kWh": 566952.9742211407
+    "basic_charge": 5715053.015779818,
+    "energy_charge": 11865934.823888456,
+    "fuel_adjustment": -4191099.1762962877,
+    "renewable_levy": 2195556.513206697,
+    "total": 15585445.176578682,
+    "peak_demand_kW": 198.01361156083237,
+    "annual_buy_kWh": 551647.3651273107
   },
   "market_linked": {
-    "basic_charge": 5845779.455674998,
-    "energy_charge": 7071931.989354497,
-    "renewable_levy": 2260144.0507591004,
-    "total": 15177855.495788597,
-    "peak_demand_kW": 202.54298590235848,
-    "annual_buy_kWh": 567875.3896379649
+    "basic_charge": 5715053.015779818,
+    "energy_charge": 6872888.693656338,
+    "renewable_levy": 2199149.0599858295,
+    "total": 14787090.769421985,
+    "peak_demand_kW": 198.01361156083235,
+    "annual_buy_kWh": 552550.0150718165
   },
-  "cheaper_plan": "market_linked"
+  "cheaper_plan": "market_linked",
+  "experiment_params": {
+    "horizon": 96,
+    "horizon_hours": 48.0,
+    "bF_max_kWh": 215.0,
+    "time_limit_per_step": 10.0,
+    "total_steps": 17520
+  },
+  "timing": {
+    "hokkaido_basic_seconds": 1277.1063210964203,
+    "market_linked_seconds": 1243.4089710712433,
+    "total_seconds": 2526.304826259613,
+    "total_minutes": 42.10508043766022
+  }
 }

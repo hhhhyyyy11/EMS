@@ -200,8 +200,6 @@ def build_and_solve_horizon(demand_kW, bF0, params, pv_kW=None, time_limit: floa
         gP1 = {k: float(pv_kW[k]) if k < len(pv_kW) else 0.0 for k in range(H)}
     gP2 = {k: model.addVar(vtype='C', name=f'gP2_{k}', lb=0) for k in range(H)}
 
-    dA1 = {k: model.addVar(vtype='C', name=f'dA1_{k}', lb=0) for k in range(H)}
-
     bF = {k: model.addVar(vtype='C', name=f'bF_{k}', lb=0) for k in range(H)}
     xFC1 = {k: model.addVar(vtype='C', name=f'xFC1_{k}', lb=0) for k in range(H)}
     xFC2 = {k: model.addVar(vtype='C', name=f'xFC2_{k}', lb=0) for k in range(H)}
@@ -295,9 +293,9 @@ def build_and_solve_horizon(demand_kW, bF0, params, pv_kW=None, time_limit: floa
         skip_groups = []
 
     for k in range(H):
-        # electric balance: available PV (gP2) + sBY - sSL - xFC1 + xFD2 - dA1 == 0
+        # electric balance: available PV (gP2) + sBY - sSL - xFC1 + xFD2 - dA2 == 0
         if 'balance' not in skip_groups:
-            model.addCons(gP2[k] + sBY[k] - sSL[k] - xFC1[k] + xFD2[k] - dA1[k] == 0)
+            model.addCons(gP2[k] + sBY[k] - sSL[k] - xFC1[k] + xFD2[k] - dA2[k] == 0)
 
         # 契約電力制約: 各時刻の買電が契約電力以下
         model.addCons(sBY[k] <= sBYMAX)
@@ -307,9 +305,6 @@ def build_and_solve_horizon(demand_kW, bF0, params, pv_kW=None, time_limit: floa
         if 'solar_conv' not in skip_groups:
             model.addCons(gP2[k] <= gP1[k])
 
-        # demand conversion (use equality like original)
-        if 'demand_conv' not in skip_groups:
-            model.addCons(dA2[k] == params.get('alpha_DA', 0.98) * dA1[k])
 
         # battery SOC update (with 0.5h time step)
         # 蓄電池容量が0の場合はSOC更新制約をスキップ（既にbF=0に固定済み）
@@ -370,7 +365,6 @@ def build_and_solve_horizon(demand_kW, bF0, params, pv_kW=None, time_limit: floa
     if debug:
         return model, {
             'sBY': sBY, 'sSL': sSL, 'gP2': gP2,
-            'dA1': dA1,
             'bF': bF, 'xFC1': xFC1, 'xFC2': xFC2, 'xFD1': xFD1, 'xFD2': xFD2,
             'params': params, 'demand_kW': demand_kW
         }
@@ -451,7 +445,6 @@ def run_rolling(df, horizon=96, control_horizon=1, time_limit: float = 60.0, max
         'aFC': 400,              # 充放電最大出力: 400kW
         'aFD': 400,              # 充放電最大出力: 400kW
         'bF0': 430,              # SOC初期値: 430kWh (50%)
-        'alpha_DA': 0.98,        # 需要側効率
         'alpha_FC': 0.98,        # 充電効率
         'alpha_FD': 0.98,        # 放電効率
         'buy_price': 18.47,      # 北海道電力基本プラン（2024年1月）: 21.51-8.76+3.98
@@ -586,6 +579,141 @@ def run_rolling(df, horizon=96, control_horizon=1, time_limit: float = 60.0, max
         return pd.DataFrame()
     df_res = pd.DataFrame(results_rows)
     df_res.set_index('timestamp', inplace=True)
+    return df_res
+
+
+def run_annual_optimal(df, time_limit: float = 3600.0, params=None, price_data=None):
+    """
+    年間一括最適化（パーフェクトフォーサイト）
+
+    年間全データを一度に最適化問題として解く。
+    ローリング最適化と異なり、将来の需要とPV発電を完全に予見した上で最適化を行う。
+
+    Args:
+        df: 入力データ（read_sample_excelで読み込んだDataFrame）
+        time_limit: ソルバーの時間制限（秒）、デフォルト3600秒（1時間）
+        params: 最適化パラメータ
+        price_data: JEPX価格データ（市場価格連動プラン用）
+
+    Returns:
+        DataFrame: 最適化結果（ローリング最適化と同じフォーマット）
+    """
+    import time
+
+    if params is None:
+        params = {}
+
+    # デフォルト値の設定
+    defaults = {
+        'bF_max': 860,           # Battery容量: 860kWh
+        'aFC': 400,              # 充放電最大出力: 400kW
+        'aFD': 400,              # 充放電最大出力: 400kW
+        'bF0': 430,              # SOC初期値: 430kWh (50%)
+        'alpha_FC': 0.98,        # 充電効率
+        'alpha_FD': 0.98,        # 放電効率
+        'buy_price': 18.47,      # 北海道電力基本プラン
+        'sell_price': 0.0,       # 売電価格: 逆潮流不可
+        'sBYMAX': 1e6,           # 買電上限: 実質無制限
+        'sSLMAX': 0.0,           # 売電上限: 逆潮流不可
+        'year': 2024,
+        'month': 1,
+    }
+    for k, v in defaults.items():
+        params.setdefault(k, v)
+
+    N = len(df)
+    print(f'年間一括最適化を開始: {N}ステップ ({N * 0.5 / 24:.1f}日間)')
+    print(f'ソルバー時間制限: {time_limit}秒 ({time_limit/60:.1f}分)')
+
+    # データの準備
+    consumption_kW_all = df['consumption_kW'].values.tolist()
+    pv_kW_all = df['pv_kW'].values.tolist()
+    demand_kW_all = consumption_kW_all
+
+    # 価格データの準備
+    if price_data is not None:
+        renewable_levy = 3.98
+        price_kW_all = []
+        fuel_adjustment_rates = {
+            1: -8.76, 2: -8.59, 3: -8.56, 4: -8.85, 5: -9.02, 6: -7.47,
+            7: -5.69, 8: -5.69, 9: -9.60, 10: -9.47, 11: -8.06, 12: -5.83
+        }
+
+        for idx in df.index:
+            normalized_idx = idx.replace(microsecond=0)
+            if normalized_idx in price_data.index:
+                jepx_price = price_data.loc[normalized_idx, 'price_yen_per_kWh']
+                if isinstance(jepx_price, pd.Series):
+                    jepx_price = jepx_price.iloc[0]
+                price_kW_all.append(float(jepx_price) + renewable_levy)
+            else:
+                month = idx.month
+                energy_rate = 21.51
+                fuel_adjustment = fuel_adjustment_rates.get(month, 0.0)
+                total_rate = energy_rate + fuel_adjustment + renewable_levy
+                price_kW_all.append(total_rate)
+    else:
+        price_kW_all = None
+
+    # 初期SOC
+    bF0 = params.get('bF0', params['bF_max'] * 0.5)
+
+    # 年間一括最適化を実行
+    print('最適化問題を構築中...')
+    start_time = time.time()
+
+    try:
+        res, status = build_and_solve_horizon(
+            demand_kW_all, bF0, params,
+            pv_kW=pv_kW_all,
+            time_limit=time_limit,
+            buy_prices=price_kW_all
+        )
+    except Exception as e:
+        print(f'年間一括最適化でエラー発生: {e}')
+        traceback.print_exc()
+        return pd.DataFrame()
+
+    elapsed = time.time() - start_time
+    print(f'最適化完了: {status} (計算時間: {elapsed:.1f}秒 = {elapsed/60:.1f}分)')
+
+    if status != 'optimal':
+        print(f'警告: 最適解が見つかりませんでした (status={status})')
+
+    # 結果をDataFrameに変換（ローリング最適化と同じフォーマット）
+    results_rows = []
+    for t in range(N):
+        timestamp = df.index[t]
+        current_price = price_kW_all[t] if price_kW_all is not None else params['buy_price']
+
+        # PV余剰の計算
+        pv_used = res.get('gP2', [0.0] * N)[t] if 'gP2' in res else 0.0
+        pv_surplus = max(0.0, pv_kW_all[t] - pv_used)
+
+        results_rows.append({
+            'timestamp': timestamp,
+            'consumption_kW': consumption_kW_all[t],
+            'pv_kW': pv_kW_all[t],
+            'demand_kW': demand_kW_all[t],
+            'sBY': res['sBY'][t],
+            'sSL': res['sSL'][t],
+            'pv_used_kW': pv_used,
+            'pv_surplus_kW': pv_surplus,
+            'xFC1': res['xFC1'][t],
+            'xFD1': res['xFD1'][t],
+            'bF': res['bF'][t],
+            'price_yen_per_kWh': current_price,
+            'sBYMAX_horizon': res.get('sBYMAX', 0.0),  # 年間全体の契約電力
+            'status': str(status)
+        })
+
+    df_res = pd.DataFrame(results_rows)
+    df_res.set_index('timestamp', inplace=True)
+
+    print(f'年間一括最適化完了: {len(results_rows)}ステップ')
+    print(f'  契約電力(最大買電): {res.get("sBYMAX", 0.0):.2f} kW')
+    print(f'  年間買電量: {df_res["sBY"].sum() * 0.5:.1f} kWh')
+
     return df_res
 
 
@@ -941,6 +1069,11 @@ def main():
     parser.add_argument('--price_data_2023', default='data/spot_summary_2023.csv', help='JEPX spot price data file (2023年度、2024年1-3月用)')
     parser.add_argument('--use_fixed_price', action='store_true', help='Use fixed price (北海道電力基本プラン) instead of market price (市場価格連動プラン)')
 
+    # 最適化モード選択
+    parser.add_argument('--mode', type=str, default='rolling', choices=['rolling', 'annual'],
+                        help='最適化モード: rolling (ローリング最適化) or annual (年間一括最適化)')
+    parser.add_argument('--compare', action='store_true', help='ローリングと年間一括最適化の比較を実行')
+
     # データ検証用オプション
     parser.add_argument('--validate', action='store_true', help='最適化結果の包括的な検証を実行')
     parser.add_argument('--verify-dates', nargs='+', metavar='DATE', help='特定日付のデータを検証 (例: 2024-06-02 2024-03-08)')
@@ -973,7 +1106,6 @@ def main():
         'aFC': 400,              # 充放電最大出力: 400kW
         'aFD': 400,              # 充放電最大出力: 400kW
         'bF0': 430,              # SOC初期値: 430kWh (50%)
-        'alpha_DA': 0.98,        # 需要側効率
         'alpha_FC': 0.98,        # 充電効率
         'alpha_FD': 0.98,        # 放電効率
         'buy_price': 24.44,      # 固定買電価格 (円/kWh)
@@ -1026,82 +1158,129 @@ def main():
     os.makedirs('results', exist_ok=True)
 
     # ========================================
-    # 1️⃣ 北海道電力基本プランで最適化
+    # モード分岐: 年間一括最適化 or ローリング最適化
     # ========================================
     import time
     total_start_time = time.time()
     timing_info = {}
 
-    print('\n' + '='*70)
-    print('1️⃣  北海道電力基本プランで最適化実行中...')
-    print('='*70)
-    print('プラン: 北海道電力基本プラン (電力量料金+燃料費調整額+再エネ賦課金)')
-
-    hokkaido_start_time = time.time()
-    df_res_hokkaido = run_rolling(df, horizon=args.horizon, control_horizon=1, time_limit=args.time_limit,
-                                   max_steps=args.max_steps, params=params, price_data=None)
-    hokkaido_elapsed = time.time() - hokkaido_start_time
-    timing_info['hokkaido_basic_seconds'] = hokkaido_elapsed
-    print(f'✓ 北海道電力基本プラン完了: {hokkaido_elapsed:.1f}秒 ({hokkaido_elapsed/60:.1f}分)')
-
-    # 出力サブフォルダ名は bF_max と horizon の値に連動させる
-    # horizon=96 が基準なので、それ以外の場合は h{horizon}/ サブフォルダを追加
+    # 出力サブフォルダ名の設定
     soc_label = f"soc{int(params['bF_max'])}"
-    if args.horizon == 96:
-        # 基準: results/soc{容量}/, png/soc{容量}/
-        results_dir = os.path.join('results', soc_label)
-        png_dir = os.path.join('png', soc_label)
-    else:
-        # 非基準: results/h{horizon}/soc{容量}/, png/h{horizon}/soc{容量}/
-        horizon_label = f"h{args.horizon}"
-        results_dir = os.path.join('results', horizon_label, soc_label)
-        png_dir = os.path.join('png', horizon_label, soc_label)
-    os.makedirs(results_dir, exist_ok=True)
-    os.makedirs(png_dir, exist_ok=True)
 
-    out_csv_hokkaido = os.path.join(results_dir, f'rolling_results_hokkaido_basic.csv')
-    df_res_hokkaido.to_csv(out_csv_hokkaido)
-    print(f'✓ Saved {out_csv_hokkaido}')
-
-    # 北海道電力プランの料金計算
-    hokkaido_costs = calculate_single_plan_costs(df_res_hokkaido, None, 'hokkaido_basic')
-
-    # ========================================
-    # 2️⃣ 市場価格連動プランで最適化
-    # ========================================
-    if not args.use_fixed_price and price_data is not None:
+    if args.mode == 'annual':
+        # ========================================
+        # 年間一括最適化モード (パーフェクトフォーサイト)
+        # ========================================
         print('\n' + '='*70)
-        print('2️⃣  市場価格連動プランで最適化実行中...')
+        print('📊 年間一括最適化モード (パーフェクトフォーサイト)')
         print('='*70)
-        print('プラン: 市場価格連動プラン (JEPX spot price data)')
+        print('将来の需要とPV発電を完全に予見した上で最適化を行います')
 
-        market_start_time = time.time()
-        df_res_market = run_rolling(df, horizon=args.horizon, control_horizon=1, time_limit=args.time_limit,
-                                     max_steps=args.max_steps, params=params, price_data=price_data)
-        market_elapsed = time.time() - market_start_time
-        timing_info['market_linked_seconds'] = market_elapsed
-        print(f'✓ 市場価格連動プラン完了: {market_elapsed:.1f}秒 ({market_elapsed/60:.1f}分)')
+        # 年間一括最適化用のサブフォルダ
+        results_dir = os.path.join('results', 'annual', soc_label)
+        png_dir = os.path.join('png', 'annual', soc_label)
+        os.makedirs(results_dir, exist_ok=True)
+        os.makedirs(png_dir, exist_ok=True)
 
-        out_csv_market = os.path.join(results_dir, f'rolling_results_market_linked.csv')
-        df_res_market.to_csv(out_csv_market)
-        print(f'✓ Saved {out_csv_market}')
+        # 北海道電力基本プランで年間一括最適化
+        print('\n1️⃣ 北海道電力基本プランで年間一括最適化...')
+        hokkaido_start_time = time.time()
+        df_res_hokkaido = run_annual_optimal(df, time_limit=args.time_limit, params=params, price_data=None)
+        hokkaido_elapsed = time.time() - hokkaido_start_time
+        timing_info['hokkaido_basic_seconds'] = hokkaido_elapsed
 
-        # 市場価格連動プランの料金計算
-        market_costs = calculate_single_plan_costs(df_res_market, price_data, 'market_linked')
+        out_csv_hokkaido = os.path.join(results_dir, 'annual_results_hokkaido_basic.csv')
+        df_res_hokkaido.to_csv(out_csv_hokkaido)
+        print(f'✓ Saved {out_csv_hokkaido}')
 
-        # 両プランの結果を統合（デフォルトは市場価格連動プランの結果を使用）
-        df_res = df_res_market
-        out_csv = out_csv_market
-    else:
-        # 固定価格モードの場合は北海道電力プランのみ
+        hokkaido_costs = calculate_single_plan_costs(df_res_hokkaido, None, 'hokkaido_basic')
+
+        # 市場価格連動プランで年間一括最適化
         market_costs = None
-        df_res = df_res_hokkaido
-        out_csv = out_csv_hokkaido
+        if not args.use_fixed_price and price_data is not None:
+            print('\n2️⃣ 市場価格連動プランで年間一括最適化...')
+            market_start_time = time.time()
+            df_res_market = run_annual_optimal(df, time_limit=args.time_limit, params=params, price_data=price_data)
+            market_elapsed = time.time() - market_start_time
+            timing_info['market_linked_seconds'] = market_elapsed
 
-    # メインの結果CSVもSOC容量ごとに保存
-    out_csv_main = os.path.join(results_dir, 'rolling_results.csv')
-    df_res.to_csv(out_csv_main)
-    print(f'\n✓ Saved {out_csv_main} (メイン結果)')
+            out_csv_market = os.path.join(results_dir, 'annual_results_market_linked.csv')
+            df_res_market.to_csv(out_csv_market)
+            print(f'✓ Saved {out_csv_market}')
+
+            market_costs = calculate_single_plan_costs(df_res_market, price_data, 'market_linked')
+            df_res = df_res_market
+        else:
+            df_res = df_res_hokkaido
+
+        # メイン結果CSVを保存
+        out_csv_main = os.path.join(results_dir, 'annual_results.csv')
+        df_res.to_csv(out_csv_main)
+        print(f'\n✓ Saved {out_csv_main} (メイン結果)')
+
+    else:
+        # ========================================
+        # ローリング最適化モード（デフォルト）
+        # ========================================
+        print('\n' + '='*70)
+        print('1️⃣  北海道電力基本プランで最適化実行中...')
+        print('='*70)
+        print('プラン: 北海道電力基本プラン (電力量料金+燃料費調整額+再エネ賦課金)')
+
+        hokkaido_start_time = time.time()
+        df_res_hokkaido = run_rolling(df, horizon=args.horizon, control_horizon=1, time_limit=args.time_limit,
+                                       max_steps=args.max_steps, params=params, price_data=None)
+        hokkaido_elapsed = time.time() - hokkaido_start_time
+        timing_info['hokkaido_basic_seconds'] = hokkaido_elapsed
+        print(f'✓ 北海道電力基本プラン完了: {hokkaido_elapsed:.1f}秒 ({hokkaido_elapsed/60:.1f}分)')
+
+        # 出力サブフォルダ名は bF_max と horizon の値に連動させる
+        if args.horizon == 96:
+            results_dir = os.path.join('results', soc_label)
+            png_dir = os.path.join('png', soc_label)
+        else:
+            horizon_label = f"h{args.horizon}"
+            results_dir = os.path.join('results', horizon_label, soc_label)
+            png_dir = os.path.join('png', horizon_label, soc_label)
+        os.makedirs(results_dir, exist_ok=True)
+        os.makedirs(png_dir, exist_ok=True)
+
+        out_csv_hokkaido = os.path.join(results_dir, f'rolling_results_hokkaido_basic.csv')
+        df_res_hokkaido.to_csv(out_csv_hokkaido)
+        print(f'✓ Saved {out_csv_hokkaido}')
+
+        hokkaido_costs = calculate_single_plan_costs(df_res_hokkaido, None, 'hokkaido_basic')
+
+        # ========================================
+        # 2️⃣ 市場価格連動プランで最適化 (ローリングモードのみ)
+        # ========================================
+        if not args.use_fixed_price and price_data is not None:
+            print('\n' + '='*70)
+            print('2️⃣  市場価格連動プランで最適化実行中...')
+            print('='*70)
+            print('プラン: 市場価格連動プラン (JEPX spot price data)')
+
+            market_start_time = time.time()
+            df_res_market = run_rolling(df, horizon=args.horizon, control_horizon=1, time_limit=args.time_limit,
+                                         max_steps=args.max_steps, params=params, price_data=price_data)
+            market_elapsed = time.time() - market_start_time
+            timing_info['market_linked_seconds'] = market_elapsed
+            print(f'✓ 市場価格連動プラン完了: {market_elapsed:.1f}秒 ({market_elapsed/60:.1f}分)')
+
+            out_csv_market = os.path.join(results_dir, f'rolling_results_market_linked.csv')
+            df_res_market.to_csv(out_csv_market)
+            print(f'✓ Saved {out_csv_market}')
+
+            market_costs = calculate_single_plan_costs(df_res_market, price_data, 'market_linked')
+            df_res = df_res_market
+        else:
+            market_costs = None
+            df_res = df_res_hokkaido
+
+        # メインの結果CSVもSOC容量ごとに保存
+        out_csv_main = os.path.join(results_dir, 'rolling_results.csv')
+        df_res.to_csv(out_csv_main)
+        print(f'\n✓ Saved {out_csv_main} (メイン結果)')
 
     # ========================================
     # 年間グラフの自動生成
