@@ -25,9 +25,9 @@
     "total_steps": 17520
   },
   "timing": {
-    "hokkaido_basic_seconds": 1553.3890318870544,
-    "market_linked_seconds": 1687.7566721439362,
-    "total_seconds": 3248.350031852722,
-    "total_minutes": 54.13916719754537
+    "hokkaido_basic_seconds": 1537.3346090316772,
+    "market_linked_seconds": 1640.186264038086,
+    "total_seconds": 3188.3037638664246,
+    "total_minutes": 53.13839606444041
   }
 }
