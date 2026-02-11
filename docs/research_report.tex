@@ -1,6 +1,7 @@
 \documentclass[a4paper,12pt,dvipdfmx]{jsarticle}
 
-\usepackage[top=20mm, bottom=25mm, left=20mm, right=20mm]{geometry}
+\usepackage{lmodern}
+\usepackage[top=25mm, bottom=25mm, left=30mm, right=25mm]{geometry}
 \usepackage{url}
 \usepackage{graphicx}
 \usepackage{amssymb}
@@ -10,15 +11,81 @@
 \usepackage{multirow}
 \usepackage{tikz}
 \usetikzlibrary{shapes,arrows,positioning}
-
-\title{電力グリッドのエネルギー需給マネジメントにおけるローリング計画モデル}
-\author{神戸大学工学部情報知能工学科4年\\山崎博之}
-\date{2026年2月19日}
+\linespread{1.1}
 
 \begin{document}
 
-\maketitle
+% タイトルページ
+\begin{titlepage}
+    \begingroup
+    \centering
+    \kanjiskip=0.25zw plus 0.1zw minus 0.05zw
+    \vspace*{2cm}
 
+    {\fontsize{28pt}{36pt}\selectfont 2025年度}\\[0.8em]
+    {\fontsize{28pt}{36pt}\selectfont 卒業論文}
+
+    \vspace{4cm}
+
+    {\fontsize{20pt}{30pt}\selectfont 電力グリッドのエネルギー需給マネジメントに\\[0.5em]おけるローリング計画モデル}
+
+    \vspace{5cm}
+
+    {\fontsize{20pt}{30pt}\selectfont 神戸大学工学部情報知能工学科}
+
+    \vspace{0.8cm}
+
+    {\fontsize{20pt}{30pt}\selectfont 山崎博之}
+
+    \vspace{1.5cm}
+
+    \begin{flushleft}
+        \hspace{3cm}{\fontsize{20pt}{30pt}\selectfont 指導教員\hspace{0.5em}\underline{\hspace{3em}玉置 久  教授\hspace{3em}}}
+    \end{flushleft}
+
+    \vspace{2cm}
+
+    {\fontsize{20pt}{30pt}\selectfont 2026年2月12日}
+
+    \endgroup
+\end{titlepage}
+
+% 中表紙
+\newpage
+\thispagestyle{empty}
+\vspace*{\fill}
+\begin{flushleft}
+\includegraphics[width=5.0cm]{250514214316.JPG}
+\end{flushleft}
+
+\newpage
+% 和文要旨
+\thispagestyle{empty}
+
+\begin{center}
+{\fontsize{18pt}{28pt}\selectfont 電力グリッドのエネルギー需給マネジメントに\\[0.3em]おけるローリング計画モデル}
+
+\vspace{1cm}
+
+{\fontsize{14pt}{22pt}\selectfont 山崎博之}
+\end{center}
+
+\vspace{1cm}
+
+\begin{center}
+{\Large\bfseries 要旨}
+\end{center}
+
+\vspace{0.5cm}
+
+本研究では，北海道十勝地方に設置された出力250kWの太陽光発電（PV）・蓄電池システムを対象に，ローリング計画法と混合整数線形計画法（MILP）を組み合わせた運用最適化手法を提案し，年間電気料金の最小化について検討した．2024年の実測データ（電力需要，PV発電量，JEPX市場価格）を用いたシミュレーションにより，北海道電力基本プラン（固定料金）と市場価格連動プランの2種類の料金体系のもとで，蓄電池容量・予測期間・再計画間隔の3つの比較軸に沿った体系的評価を行った．
+
+蓄電池容量の比較（予測期間48時間）では，蓄電池未設置の場合は両プランともPV利用率が78\%にとどまり余剰電力の廃棄が発生したが，蓄電池容量の増加に伴いPV利用率は向上し，蓄電池容量が860kWhの場合，PV利用率は100\%に達した．経済性の観点からは，容量が430kWh以下では市場価格連動プランが有利である一方，540kWh以上では北海道電力基本プランが有利となり，優位性が逆転した．この逆転は，蓄電池の主な役割が「市場価格の変動を利用したコスト削減」から「最大需要電力（ピーク）の抑制」へと変化したことに起因すると説明できる．また，予測期間の延長はコスト削減に有効であり，特に市場価格連動プランにおいては，長期予測を行うことでローリング計画法の解が年間一括最適化の解に収束し，システムの経済性が大幅に向上することが実証された．さらに，再計画間隔を4時間に延長することで，コストへの影響を0.5万円未満に抑えつつ，計算時間を約88\%削減できることを示した．
+
+年間一括最適化との比較では，北海道電力基本プランではローリング計画法でもほぼ最適解を達成する一方，市場価格連動プランでは目的関数の設計上の制約から8〜18\%のコスト差が生じることが明らかとなった．以上の結果から，料金プランの優位性は蓄電池容量と予測期間の両方に依存し，実用上は計算資源と予測精度を考慮した適切なパラメータ選択が重要であることを結論づけた．
+
+\newpage
+\setcounter{page}{1}
 \section{背景と目的}
 
 本研究では，北海道十勝地方に設置された出力250kWの太陽光発電（PV）・蓄電池システムを対象に，ローリング計画法を用いた年間電気料金の最小化について検討する．
@@ -33,70 +100,7 @@
 \end{enumerate}
 また，ローリング計画法の理論的限界を評価するため，年間一括最適化との比較も行う．
 
-本論文の構成は以下の通りである．第2章ではシステム構成と制約条件を述べ，第3章で最適化手法（ローリング計画法およびMILP定式化）を説明する．第4章で実験設定を示し，第5章で結果と考察を報告する．第6章で結論を述べる．
-
-\section{システム構成と制約条件}
-
-\subsection{用語の定義}
-
-本論文で使用する主要な用語を以下に定義する．
-
-\begin{itemize}
-    \item \textbf{電力系統（系統）}：発電所から電力消費者（施設や家庭など）まで電力を供給するための送電・配電網の総称．本研究では，施設が電力会社から電力を購入する際の接続先を指す．
-    \item \textbf{買電}：電力系統から電力を購入すること．その電力量を買電量 [kWh]，瞬時電力を買電電力 [kW] と呼ぶ．
-    \item \textbf{逆潮流}：施設側から電力系統へ電力を送り返すこと（売電）．本研究では逆潮流を禁止する設定とした．
-    \item \textbf{契約電力}：電力会社との契約で定める最大需要電力 [kW]．高圧契約の場合，過去1年間の各月の最大需要電力（30分平均値）のうち最大のものが適用される．基本料金はこの契約電力に比例する．
-    \item \textbf{出力抑制}：PV発電可能量の一部を意図的に使用せず捨てること．蓄電池が満充電かつ需要が少ない場合などに発生する．
-\end{itemize}
-
-\subsection{対象システムの概要}
-
-本研究では，2024年1月1日から同年12月31日までの365日間（2月29日を除く17,520ステップ，30分時間解像度）を対象期間とし，以下の仕様を持つシステムについてシミュレーションを行った．
-
-\begin{itemize}
-    \item \textbf{太陽光発電（PV）システム}：定格出力は250kWであり，パネルは南向き，設置角度40°で固定されている．
-    \item \textbf{蓄電池システム}：蓄電池容量は本研究の比較軸の1つであり，0kWhから1720kWhの範囲で変化させて経済性を評価する．最大充放電出力は400kWである．初期SOC（State of Charge：蓄電池の充電残量を0〜100\%で表す指標）は容量の50\%とし，充放電効率はいずれも0.98（リチウムイオン電池の一般的な値）と設定した．
-    \item \textbf{系統電力}：買電単価は市場価格連動（JEPX）または固定料金を適用する．基本料金単価は北海道電力の高圧電力料金（2,829.60円/kW）に基づき，力率割引（85\%）を考慮した値を採用した．なお，本システムは完全自家消費型であり，逆潮流は行わない設定とした．
-\end{itemize}
-
-システム構成の概念図を図\ref{fig:system_config}に示す．
-
-\begin{figure}[H]
-\centering
-\begin{tikzpicture}[
-    node distance=1.5cm,
-    block/.style={rectangle, draw, minimum width=2.5cm, minimum height=1cm, align=center},
-    arrow/.style={->, thick},
-    darrow/.style={<->, thick}
-]
-% ノード定義
-\node[block] (grid) {電力系統\\（北電/JEPX）};
-\node[block, right=2.5cm of grid] (load) {施設負荷\\（需要）};
-\node[block, above=1.2cm of load] (pv) {太陽光発電\\（PV: 250kW）};
-\node[block, below=1.2cm of load] (battery) {蓄電池\\（860kWh）};
-
-% 矢印
-\draw[arrow] (grid) -- node[above] {$s^{\mathrm{BY}}_k$} node[below] {買電} (load);
-\draw[arrow] (pv) -- node[right] {$g^{\mathrm{P2}}_k$} (load);
-\draw[darrow] (battery) -- node[right] {$x^{\mathrm{FC}}_k / x^{\mathrm{FD}}_k$} node[left] {充放電} (load);
-
-% 注釈
-\node[below=0.3cm of battery, text width=3cm, align=center, font=\small] {SOC: $b^{\mathrm{F}}_k$};
-\end{tikzpicture}
-\caption{システム構成の概念図．電力系統からの買電，PV発電，蓄電池の充放電により施設需要を満たす．}
-\label{fig:system_config}
-\end{figure}
-
-\subsection{運用制約条件}
-
-システム運用における最適化計算では，以下の物理的および制度的制約を課した．
-
-\begin{itemize}
-    \item \textbf{電力需給平衡}：各タイムステップにおいて，供給電力（PV発電，買電，蓄電池放電）の総和は，需要電力（施設需要，蓄電池充電）の総和と常に一致しなければならない．
-    \item \textbf{蓄電池運用制約}：蓄電池の劣化抑制および安全性を考慮し，SOCの運用範囲は定格容量の5\%から95\%に制限した（容量860kWhの場合，43kWh以上817kWh以下）．また，充放電電力は最大出力（400kW）以下とし，充電と放電の同時実行を禁止する排他制御も行う．
-    \item \textbf{逆潮流禁止制約}：PV発電の余剰電力が生じた場合でも，売電量は常に0とし，システム内で消費または出力抑制するものとした．
-\end{itemize}
-
+本論文の構成は以下の通りである．第2章では最適化手法であるローリング計画法および混合整数線形計画法（MILP）の概要を説明する．第3章では，本研究の対象となるシステムモデル，料金体系，および数理モデルの定式化について述べる．第4章で実験設定を示し，第5章で結果と考察を報告する．第6章で結論を述べる．
 
 \section{最適化手法}
 
@@ -211,6 +215,58 @@ MILPは以下の問題に適用される：
 \label{fig:rolling_horizon}
 \end{figure}
 
+\section{システムモデルと定式化}
+
+\subsection{用語の定義}
+
+本論文で使用する主要な用語を以下に定義する．
+
+\begin{itemize}
+    \item \textbf{電力系統（系統）}：発電所から電力消費者（施設や家庭など）まで電力を供給するための送電・配電網の総称．本研究では，施設が電力会社から電力を購入する際の接続先を指す．
+    \item \textbf{買電}：電力系統から電力を購入すること．その電力量を買電量 [kWh]，瞬時電力を買電電力 [kW] と呼ぶ．
+    \item \textbf{逆潮流}：施設側から電力系統へ電力を送り返すこと（売電）．本研究では逆潮流を禁止する設定とした．
+    \item \textbf{契約電力}：電力会社との契約で定める最大需要電力 [kW]．高圧契約の場合，過去1年間の各月の最大需要電力（30分平均値）のうち最大のものが適用される．基本料金はこの契約電力に比例する．
+    \item \textbf{出力抑制}：PV発電可能量の一部を意図的に使用せず捨てること．蓄電池が満充電かつ需要が少ない場合などに発生する．
+\end{itemize}
+
+\subsection{対象システムの概要}
+
+本研究では，2024年1月1日から同年12月31日までの365日間（2月29日を除く17,520ステップ，30分時間解像度）を対象期間とし，以下の仕様を持つシステムについてシミュレーションを行った．
+
+\begin{itemize}
+    \item \textbf{太陽光発電（PV）システム}：定格出力は250kWであり，パネルは南向き，設置角度40°で固定されている．
+    \item \textbf{蓄電池システム}：蓄電池容量は本研究の比較軸の1つであり，0kWhから1720kWhの範囲で変化させて経済性を評価する．最大充放電出力は400kWである．初期SOC（State of Charge：蓄電池の充電残量を0〜100\%で表す指標）は容量の50\%とし，充放電効率はいずれも0.98（リチウムイオン電池の一般的な値）と設定した．
+    \item \textbf{系統電力}：買電単価は市場価格連動（JEPX）または固定料金を適用する．基本料金単価は北海道電力の高圧電力料金（2,829.60円/kW）に基づき，力率割引（85\%）を考慮した値を採用した．なお，本システムは完全自家消費型であり，逆潮流は行わない設定とした．
+\end{itemize}
+
+システム構成の概念図を図\ref{fig:system_config}に示す．
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=1.5cm,
+    block/.style={rectangle, draw, minimum width=2.5cm, minimum height=1cm, align=center},
+    arrow/.style={->, thick},
+    darrow/.style={<->, thick}
+]
+% ノード定義
+\node[block] (grid) {電力系統\\（北電/JEPX）};
+\node[block, right=2.5cm of grid] (load) {施設負荷\\（需要）};
+\node[block, above=1.2cm of load] (pv) {太陽光発電\\（PV: 250kW）};
+\node[block, below=1.2cm of load] (battery) {蓄電池\\（860kWh）};
+
+% 矢印
+\draw[arrow] (grid) -- node[above] {$s^{\mathrm{BY}}_k$} node[below] {買電} (load);
+\draw[arrow] (pv) -- node[right] {$g^{\mathrm{P2}}_k$} (load);
+\draw[darrow] (battery) -- node[right] {$x^{\mathrm{FC}}_k / x^{\mathrm{FD}}_k$} node[left] {充放電} (load);
+
+% 注釈
+\node[below=0.3cm of battery, text width=3cm, align=center, font=\small] {SOC: $b^{\mathrm{F}}_k$};
+\end{tikzpicture}
+\caption{システム構成の概念図．電力系統からの買電，PV発電，蓄電池の充放電により施設需要を満たす．}
+\label{fig:system_config}
+\end{figure}
+
 \subsection{料金体系}
 
 本研究で比較検討する2種類の料金体系について説明する．
@@ -284,6 +340,17 @@ C_{\mathrm{energy}} = E_{\mathrm{month}} \times (P_{\mathrm{JEPX}}(t) + 3.98) \q
 \end{equation}
 
 ここで，$P_{\mathrm{JEPX}}(t)$は時刻 $t$ のJEPXスポット価格（円/kWh），3.98は再生可能エネルギー発電促進賦課金（円/kWh）である．基本料金は北海道電力と同額とする．
+
+\subsection{運用制約条件}
+
+システム運用における最適化計算では，以下の物理的および制度的制約を課した．
+
+\begin{itemize}
+    \item \textbf{電力需給平衡}：各タイムステップにおいて，供給電力（PV発電，買電，蓄電池放電）の総和は，需要電力（施設需要，蓄電池充電）の総和と常に一致しなければならない．
+    \item \textbf{蓄電池運用制約}：蓄電池の劣化抑制および安全性を考慮し，SOCの運用範囲は定格容量の5\%から95\%に制限した（容量860kWhの場合，43kWh以上817kWh以下）．また，充放電電力は最大出力（400kW）以下とし，充電と放電の同時実行を禁止する排他制御も行う．
+    \item \textbf{逆潮流禁止制約}：PV発電の余剰電力が生じた場合でも，売電量は常に0とし，システム内で消費または出力抑制するものとした．
+\end{itemize}
+
 
 \subsection{数理モデルの定式化}
 
@@ -509,15 +576,31 @@ P_{\mathrm{avg}} = \frac{E_{30\mathrm{min}}}{0.5}
 
 \begin{figure}[H]
 \centering
-\begin{tikzpicture}[scale=0.6]
-    \node[draw, rectangle, minimum width=2.5cm, minimum height=0.8cm] (battery) at (0,0) {蓄電池容量};
-    \node[draw, rectangle, minimum width=2.5cm, minimum height=0.8cm, fill=gray!20] (horizon) at (4,0) {予測期間$H$};
-    \node[draw, rectangle, minimum width=2.5cm, minimum height=0.8cm, fill=gray!20] (interval) at (8,0) {再計画間隔$m$};
-    \draw[->, very thick, red] (0,-0.8) -- (0,-1.5) node[below] {\small \textbf{変化}};
-    \node at (4,-1.2) {\small 固定(48h)};
-    \node at (8,-1.2) {\small 固定(30分)};
+\begin{tikzpicture}[scale=0.8]
+    % 蓄電池容量（変化）
+    \node[anchor=east] at (-0.5,0) {\textbf{蓄電池容量}};
+    \draw[thick] (0,0) -- (5,0);
+    \foreach \x/\label in {0/0, 1.25/430, 2.5/860, 3.75/1290, 5/1720} {
+        \draw[thick] (\x,-0.1) -- (\x,0.1);
+    }
+    \node[below] at (0,-0.2) {\scriptsize 0};
+    \node[below] at (5,-0.2) {\scriptsize 1720kWh};
+    \draw[red, very thick, <->] (0.1,0.3) -- (4.9,0.3);
+    \node[red, above] at (2.5,0.3) {\small \textbf{変化させる}};
+
+    % 予測期間（固定）
+    \node[anchor=east] at (-0.5,-1.5) {予測期間$H$};
+    \draw[gray, thick] (0,-1.5) -- (5,-1.5);
+    \fill[blue] (2.5,-1.5) circle (0.15);
+    \node[below, gray] at (2.5,-1.7) {\small 固定: 48時間};
+
+    % 再計画間隔（固定）
+    \node[anchor=east] at (-0.5,-2.5) {再計画間隔$m$};
+    \draw[gray, thick] (0,-2.5) -- (5,-2.5);
+    \fill[blue] (0.5,-2.5) circle (0.15);
+    \node[below, gray] at (0.5,-2.7) {\small 固定: 30分};
 \end{tikzpicture}
-\caption{本節の比較軸：蓄電池容量を0〜1720kWhで変化させ，他の条件は固定．}
+\caption{本節の比較軸：蓄電池容量を0〜1720kWhで変化させ，予測期間と再計画間隔は固定．}
 \label{fig:axis_battery}
 \end{figure}
 
@@ -888,15 +971,31 @@ PV利用率 [\%] & 両プラン共通 & 78.0 & 100.0 & \\
 
 \begin{figure}[H]
 \centering
-\begin{tikzpicture}[scale=0.6]
-    \node[draw, rectangle, minimum width=2.5cm, minimum height=0.8cm, fill=gray!20] (battery) at (0,0) {蓄電池容量};
-    \node[draw, rectangle, minimum width=2.5cm, minimum height=0.8cm] (horizon) at (4,0) {予測期間$H$};
-    \node[draw, rectangle, minimum width=2.5cm, minimum height=0.8cm, fill=gray!20] (interval) at (8,0) {再計画間隔$m$};
-    \node at (0,-1.2) {\small 固定(860kWh)};
-    \draw[->, very thick, red] (4,-0.8) -- (4,-1.5) node[below] {\small \textbf{変化}};
-    \node at (8,-1.2) {\small 固定(30分)};
+\begin{tikzpicture}[scale=0.8]
+    % 蓄電池容量（固定）
+    \node[anchor=east] at (-0.5,0) {蓄電池容量};
+    \draw[gray, thick] (0,0) -- (5,0);
+    \fill[blue] (2.5,0) circle (0.15);
+    \node[below, gray] at (2.5,-0.2) {\small 固定: 860kWh};
+
+    % 予測期間（変化）
+    \node[anchor=east] at (-0.5,-1.5) {\textbf{予測期間$H$}};
+    \draw[thick] (0,-1.5) -- (5,-1.5);
+    \foreach \x in {0, 1.25, 2.5, 3.75, 5} {
+        \draw[thick] (\x,-1.6) -- (\x,-1.4);
+    }
+    \node[below] at (0,-1.7) {\scriptsize 24h};
+    \node[below] at (5,-1.7) {\scriptsize 72h};
+    \draw[red, very thick, <->] (0.1,-1.2) -- (4.9,-1.2);
+    \node[red, above] at (2.5,-1.2) {\small \textbf{変化させる}};
+
+    % 再計画間隔（固定）
+    \node[anchor=east] at (-0.5,-3) {再計画間隔$m$};
+    \draw[gray, thick] (0,-3) -- (5,-3);
+    \fill[blue] (0.5,-3) circle (0.15);
+    \node[below, gray] at (0.5,-3.2) {\small 固定: 30分};
 \end{tikzpicture}
-\caption{本節の比較軸：予測期間$H$を24〜72時間で変化させ，他の条件は固定．}
+\caption{本節の比較軸：予測期間$H$を24〜72時間で変化させ，蓄電池容量と再計画間隔は固定．}
 \label{fig:axis_horizon}
 \end{figure}
 
@@ -1081,15 +1180,36 @@ $H=144$（72時間） & 32.3 & 27.9 & 60.6 \\
 
 \begin{figure}[H]
 \centering
-\begin{tikzpicture}[scale=0.6]
-    \node[draw, rectangle, minimum width=2.5cm, minimum height=0.8cm, fill=gray!20] (battery) at (0,0) {蓄電池容量};
-    \node[draw, rectangle, minimum width=2.5cm, minimum height=0.8cm] (horizon) at (4,0) {予測期間$H$};
-    \node[draw, rectangle, minimum width=2.5cm, minimum height=0.8cm] (interval) at (8,0) {再計画間隔$m$};
-    \node at (0,-1.2) {\small 固定(860kWh)};
-    \draw[->, very thick, red] (4,-0.8) -- (4,-1.5) node[below] {\small \textbf{変化}};
-    \draw[->, very thick, red] (8,-0.8) -- (8,-1.5) node[below] {\small \textbf{変化}};
+\begin{tikzpicture}[scale=0.8]
+    % 蓄電池容量（固定）
+    \node[anchor=east] at (-0.5,0) {蓄電池容量};
+    \draw[gray, thick] (0,0) -- (5,0);
+    \fill[blue] (2.5,0) circle (0.15);
+    \node[below, gray] at (2.5,-0.2) {\small 固定: 860kWh};
+
+    % 予測期間（変化）
+    \node[anchor=east] at (-0.5,-1.5) {\textbf{予測期間$H$}};
+    \draw[thick] (0,-1.5) -- (5,-1.5);
+    \foreach \x in {0, 1.25, 2.5, 3.75, 5} {
+        \draw[thick] (\x,-1.6) -- (\x,-1.4);
+    }
+    \node[below] at (0,-1.7) {\scriptsize 4日};
+    \node[below] at (5,-1.7) {\scriptsize 21日};
+    \draw[red, very thick, <->] (0.1,-1.2) -- (4.9,-1.2);
+    \node[red, above] at (2.5,-1.2) {\small \textbf{変化させる}};
+
+    % 再計画間隔（変化）
+    \node[anchor=east] at (-0.5,-3) {\textbf{再計画間隔$m$}};
+    \draw[thick] (0,-3) -- (5,-3);
+    \foreach \x in {0, 2.5, 5} {
+        \draw[thick] (\x,-3.1) -- (\x,-2.9);
+    }
+    \node[below] at (0,-3.2) {\scriptsize 30分};
+    \node[below] at (5,-3.2) {\scriptsize 12時間};
+    \draw[red, very thick, <->] (0.1,-2.7) -- (4.9,-2.7);
+    \node[red, above] at (2.5,-2.7) {\small \textbf{変化させる}};
 \end{tikzpicture}
-\caption{本節の比較軸：予測期間$H$（4〜21日間）と再計画間隔$m$（30分〜12時間）を変化させる．}
+\caption{本節の比較軸：予測期間$H$（4〜21日間）と再計画間隔$m$（30分〜12時間）の両方を変化させる．}
 \label{fig:axis_interval}
 \end{figure}
 
