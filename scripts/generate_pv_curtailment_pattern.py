@@ -12,7 +12,7 @@ from datetime import datetime
 import os
 
 # 日本語フォントの設定
-plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'Hiragino Sans', 'Yu Gothic', 'Meirio', 'TakaoPGothic', 'IPAexGothic']
+plt.rcParams['font.sans-serif'] = ['Arial', 'Helvetica', 'DejaVu Sans']
 plt.rcParams['axes.unicode_minus'] = False
 
 def find_max_pv_surplus_day(results_file):
@@ -108,16 +108,16 @@ def generate_pv_curtailment_pattern(target_date=None, results_dir='results', png
 
     # 左軸: 電力フロー
     ax1.plot(df_day['timestamp'], df_day['demand_kW'],
-             color='red', linewidth=2, label='需要')
+             color='red', linewidth=2, label='Demand')
     ax1.plot(df_day['timestamp'], df_day['pv_kW'],
-             color='darkorange', linewidth=2, linestyle='--', label='PV発電')
+             color='darkorange', linewidth=2, linestyle='--', label='PV Generation')
     ax1.plot(df_day['timestamp'], df_day['pv_used_kW'],
              color='orange', linewidth=2, label='PV使用')
     ax1.plot(df_day['timestamp'], df_day['sBY'],
-             color='blue', linewidth=2, label='買電')
+             color='blue', linewidth=2, label='Purchased Power')
 
-    ax1.set_xlabel('時刻', fontsize=12)
-    ax1.set_ylabel('電力 [kW]', fontsize=12)
+    ax1.set_xlabel('Time', fontsize=12)
+    ax1.set_ylabel('Power [kW]', fontsize=12)
     ax1.grid(True, alpha=0.3)
     ax1.legend(loc='upper left', fontsize=10)
 
@@ -131,7 +131,7 @@ def generate_pv_curtailment_pattern(target_date=None, results_dir='results', png
     # 右軸: 蓄電池SOC
     ax2 = ax1.twinx()
     ax2.plot(df_day['timestamp'], df_day['bF'],
-             color='green', linewidth=2.5, linestyle='--', label='蓄電池SOC')
+             color='green', linewidth=2.5, linestyle='--', label='Battery SOC')
 
     # bF_max を動的に決定（CSVに列があれば優先、それ以外はフォルダ名から推定）
     try:

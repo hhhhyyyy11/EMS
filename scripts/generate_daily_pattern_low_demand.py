@@ -13,7 +13,7 @@ from datetime import datetime
 import os
 
 # 日本語フォントの設定
-plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'Hiragino Sans', 'Yu Gothic', 'Meirio', 'TakaoPGothic', 'IPAexGothic']
+plt.rcParams['font.sans-serif'] = ['Arial', 'Helvetica', 'DejaVu Sans']
 plt.rcParams['axes.unicode_minus'] = False
 
 def generate_daily_pattern_graph(date1='2024-02-05', date2='2024-01-22', results_dir='results', png_dir='png'):
@@ -76,13 +76,13 @@ def generate_daily_pattern_graph(date1='2024-02-05', date2='2024-01-22', results
     # === 上のグラフ: PV発電量が多い日 ===
     ax1_left = ax1
     ax1_left.plot(df_day1['timestamp'], df_day1['demand_kW'],
-                  color='red', linewidth=2, label='需要')
+                  color='red', linewidth=2, label='Demand')
     ax1_left.plot(df_day1['timestamp'], df_day1['pv_used_kW'],
-                  color='orange', linewidth=2, label='PV発電')
+                  color='orange', linewidth=2, label='PV Generation')
     ax1_left.plot(df_day1['timestamp'], df_day1['sBY'],
-                  color='blue', linewidth=2, label='買電')
+                  color='blue', linewidth=2, label='Purchased Power')
 
-    ax1_left.set_ylabel('電力 [kW]', fontsize=12)
+    ax1_left.set_ylabel('Power [kW]', fontsize=12)
     ax1_left.grid(True, alpha=0.3)
     ax1_left.legend(loc='upper left', fontsize=10)
     ax1_left.set_ylim(0, y1_max * 1.1)
@@ -90,7 +90,7 @@ def generate_daily_pattern_graph(date1='2024-02-05', date2='2024-01-22', results
     # 右軸：SOC
     ax1_right = ax1_left.twinx()
     ax1_right.plot(df_day1['timestamp'], df_day1['bF'],
-                   color='green', linewidth=2, linestyle='--', label='蓄電池SOC')
+                   color='green', linewidth=2, linestyle='--', label='Battery SOC')
     # bF_max を推定して右軸を設定
     try:
         bF_max = 860
@@ -104,8 +104,8 @@ def generate_daily_pattern_graph(date1='2024-02-05', date2='2024-01-22', results
                 bF_max = int(m.group(1))
     except Exception:
         bF_max = 860
-    ax1_right.axhline(y=bF_max * 0.5, color='red', linestyle=':', linewidth=1, alpha=0.5, label='50%容量')
-    ax1_right.set_ylabel('蓄電池SOC [kWh]', fontsize=12)
+    ax1_right.axhline(y=bF_max * 0.5, color='red', linestyle=':', linewidth=1, alpha=0.5, label='50% Capacity')
+    ax1_right.set_ylabel('Battery SOC [kWh]', fontsize=12)
     ax1_right.legend(loc='upper right', fontsize=10)
     ax1_right.set_ylim(0, bF_max * 1.05)
 
@@ -115,20 +115,20 @@ def generate_daily_pattern_graph(date1='2024-02-05', date2='2024-01-22', results
     plt.setp(ax1_left.xaxis.get_majorticklabels(), rotation=45, ha='right')
 
     # タイトル
-    ax1_left.set_title(f'PV発電量が多い日 ({date1}, PV発電量: {pv_total1:.0f} kWh)',
+    ax1_left.set_title(f'High PV Generation Day ({date1}, PV: {pv_total1:.0f} kWh)',
                        fontsize=12, pad=10)
 
     # === 下のグラフ: PV発電量が少ない日 ===
     ax2_left = ax2
     ax2_left.plot(df_day2['timestamp'], df_day2['demand_kW'],
-                  color='red', linewidth=2, label='需要')
+                  color='red', linewidth=2, label='Demand')
     ax2_left.plot(df_day2['timestamp'], df_day2['pv_used_kW'],
-                  color='orange', linewidth=2, label='PV発電')
+                  color='orange', linewidth=2, label='PV Generation')
     ax2_left.plot(df_day2['timestamp'], df_day2['sBY'],
-                  color='blue', linewidth=2, label='買電')
+                  color='blue', linewidth=2, label='Purchased Power')
 
-    ax2_left.set_xlabel('時刻', fontsize=12)
-    ax2_left.set_ylabel('電力 [kW]', fontsize=12)
+    ax2_left.set_xlabel('Time', fontsize=12)
+    ax2_left.set_ylabel('Power [kW]', fontsize=12)
     ax2_left.grid(True, alpha=0.3)
     ax2_left.legend(loc='upper left', fontsize=10)
     ax2_left.set_ylim(0, y1_max * 1.1)
@@ -136,9 +136,9 @@ def generate_daily_pattern_graph(date1='2024-02-05', date2='2024-01-22', results
     # 右軸：SOC
     ax2_right = ax2_left.twinx()
     ax2_right.plot(df_day2['timestamp'], df_day2['bF'],
-                   color='green', linewidth=2, linestyle='--', label='蓄電池SOC')
-    ax2_right.axhline(y=bF_max * 0.5, color='red', linestyle=':', linewidth=1, alpha=0.5, label='50%容量')
-    ax2_right.set_ylabel('蓄電池SOC [kWh]', fontsize=12)
+                   color='green', linewidth=2, linestyle='--', label='Battery SOC')
+    ax2_right.axhline(y=bF_max * 0.5, color='red', linestyle=':', linewidth=1, alpha=0.5, label='50% Capacity')
+    ax2_right.set_ylabel('Battery SOC [kWh]', fontsize=12)
     ax2_right.legend(loc='upper right', fontsize=10)
     ax2_right.set_ylim(0, bF_max * 1.05)
 
@@ -148,7 +148,7 @@ def generate_daily_pattern_graph(date1='2024-02-05', date2='2024-01-22', results
     plt.setp(ax2_left.xaxis.get_majorticklabels(), rotation=45, ha='right')
 
     # タイトル
-    ax2_left.set_title(f'PV発電量が少ない日 ({date2}, PV発電量: {pv_total2:.0f} kWh)',
+    ax2_left.set_title(f'Low PV Generation Day ({date2}, PV: {pv_total2:.0f} kWh)',
                        fontsize=12, pad=10)
 
     plt.tight_layout()

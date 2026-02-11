@@ -10,8 +10,8 @@ import matplotlib.dates as mdates
 from pathlib import Path
 from typing import Optional
 
-# 日本語フォント設定
-plt.rcParams['font.sans-serif'] = ['Hiragino Sans', 'Yu Gothic', 'Meirio', 'Takao', 'IPAexGothic', 'IPAPGothic']
+# Font settings (English)
+plt.rcParams['font.sans-serif'] = ['Arial', 'Helvetica', 'DejaVu Sans']
 plt.rcParams['font.family'] = 'sans-serif'
 plt.rcParams['axes.unicode_minus'] = False
 
@@ -37,14 +37,14 @@ def generate_annual_pv_buy_demand_graph(results_dir: str = 'results', png_dir: s
     fig, ax = plt.subplots(figsize=(14, 6))
 
     # データプロット
-    ax.plot(df['timestamp'], df['demand_kW'], label='需要', linewidth=0.5, alpha=0.7, color='red')
-    ax.plot(df['timestamp'], df['pv_kW'], label='PV発電', linewidth=0.5, alpha=0.7, color='orange')
-    ax.plot(df['timestamp'], df['sBY'], label='買電', linewidth=0.5, alpha=0.7, color='blue')
+    ax.plot(df['timestamp'], df['demand_kW'], label='Demand', linewidth=0.5, alpha=0.7, color='red')
+    ax.plot(df['timestamp'], df['pv_kW'], label='PV Generation', linewidth=0.5, alpha=0.7, color='orange')
+    ax.plot(df['timestamp'], df['sBY'], label='Purchased Power', linewidth=0.5, alpha=0.7, color='blue')
 
-    # グラフ設定
-    ax.set_xlabel('日付', fontsize=12)
-    ax.set_ylabel('電力 [kW]', fontsize=12)
-    ax.set_title('年間のPV発電・買電・需要の推移（2024年）', fontsize=14, fontweight='bold')
+    # Graph settings
+    ax.set_xlabel('Date', fontsize=12)
+    ax.set_ylabel('Power [kW]', fontsize=12)
+    ax.set_title('Annual Transition of PV Generation, Purchased Power, and Demand (2024)', fontsize=14, fontweight='bold')
     ax.legend(loc='upper right', fontsize=10)
     ax.grid(True, alpha=0.3)
 
@@ -103,9 +103,9 @@ def generate_annual_soc_graph(results_dir: str = 'results', png_dir: str = 'png'
     ax.plot(df['timestamp'], df['bF'], linewidth=0.5, alpha=0.8, color='green')
 
     # グラフ設定
-    ax.set_xlabel('日付', fontsize=12)
+    ax.set_xlabel('Date', fontsize=12)
     ax.set_ylabel('SOC [kWh]', fontsize=12)
-    ax.set_title('年間の蓄電池SOC推移（2024年）', fontsize=14, fontweight='bold')
+    ax.set_title('Annual Battery SOC Transition (2024)', fontsize=14, fontweight='bold')
     ax.grid(True, alpha=0.3)
 
     # X軸の日付フォーマット

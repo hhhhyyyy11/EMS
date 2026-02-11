@@ -207,7 +207,7 @@
   ],
   "seasonal": [
     {
-      "season": "春 (3-5月)",
+      "season": "Spring (Mar-May)",
       "demand_total_kWh": 170544.0,
       "pv_total_kWh": 86123.0,
       "buy_total_kWh": 85726.90269519947,
@@ -221,7 +221,7 @@
       "peak_cut_rate": 35.16238499110221
     },
     {
-      "season": "夏 (6-8月)",
+      "season": "Summer (Jun-Aug)",
       "demand_total_kWh": 307031.0,
       "pv_total_kWh": 69256.0,
       "buy_total_kWh": 239329.09714251425,
@@ -235,7 +235,7 @@
       "peak_cut_rate": 17.40347410883345
     },
     {
-      "season": "秋 (9-11月)",
+      "season": "Autumn (Sep-Nov)",
       "demand_total_kWh": 213290.0,
       "pv_total_kWh": 66376.0,
       "buy_total_kWh": 148422.47944965688,
@@ -249,7 +249,7 @@
       "peak_cut_rate": 20.095828627504826
     },
     {
-      "season": "冬 (12-2月)",
+      "season": "Winter (Dec-Feb)",
       "demand_total_kWh": 122117.0,
       "pv_total_kWh": 65878.0,
       "buy_total_kWh": 57879.232000407865,
