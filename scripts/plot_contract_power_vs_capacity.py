@@ -26,7 +26,7 @@ hokkaido_purchase = [590587, 551647, 535043, 532389, 531536, 531528, 531672, 531
 market_purchase = [590587, 552550, 535623, 532738, 531684, 531358, 531333, 531135]
 
 # Create graph (3-panel layout)
-fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 12))
+fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 8))
 
 # Panel 1: Contract power vs Battery capacity
 ax1.plot(capacity, hokkaido_contract, 'o-', color='#1f77b4', linewidth=2, markersize=8, label='Hokkaido Electric Basic Plan')
